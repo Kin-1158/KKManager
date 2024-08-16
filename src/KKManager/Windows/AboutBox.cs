@@ -4,7 +4,7 @@ using System.Windows.Forms;
 
 namespace KKManager.Windows
 {
-    partial class AboutBox : Form
+    sealed partial class AboutBox : Form
     {
         public AboutBox()
         {
@@ -14,7 +14,13 @@ namespace KKManager.Windows
             this.labelVersion.Text = String.Format("Version {0}", AssemblyVersion);
             this.labelCopyright.Text = AssemblyCopyright;
             this.labelCompanyName.Text = AssemblyCompany;
-            this.textBoxDescription.Text = AssemblyDescription + "\r\n\r\nSpecial credits:\r\nAvocado Kai - AIS update image (AI version of Chika)";
+            this.textBoxDescription.Text = AssemblyDescription + @"
+
+Special credits:
+Avocado Kai - AIS/HS2 update banner (AI ver. of Chika)
+Kaldeqca - Chinese translations
+LimsDes - Russian translations
+";
         }
 
         #region Assembly Attribute Accessors

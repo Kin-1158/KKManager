@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using KKManager.Util;
 using MessagePack;
 
 namespace KKManager.Data.Cards.RG
@@ -13,9 +15,9 @@ namespace KKManager.Data.Cards.RG
         public string Birthday => $"{GetBirthMonth(Parameter.birthMonth)} {Parameter.birthDay}";
         public string Fetishes => String.Join(", ", GetFetishes(Parameter.propensity));
         public string Traits => String.Join(", ", GetTraits(Parameter.features));
-        public ChaFileParameter Parameter { get; }
+        [ReadOnly(true)] public ChaFileParameter Parameter { get; }
 
-        private RoomGirlCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, ChaFileParameter parameter) : base(cardFile, type, extended)
+        private RoomGirlCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, FileSize extendedSize, ChaFileParameter parameter, Version version) : base(cardFile, type, extended, extendedSize, version)
         {
             Parameter = parameter;
         }
@@ -29,11 +31,11 @@ namespace KKManager.Data.Cards.RG
                 //return null;
             }
 
-            var zeropadding = reader.ReadInt32();
+            var language = reader.ReadInt32();
 
             // two GUIDs, one is a meme, the other is unique to the card
-            string guidstring1 = reader.ReadString(); // this is always 'illusion-2022-0825-xxxx-roomgirlocha'
-            string guidstring2 = reader.ReadString();
+            string userID = reader.ReadString(); // this is always 'illusion-2022-0825-xxxx-roomgirlocha'
+            string dataID = reader.ReadString();
 
             // the next int32 contains a byte-offset value from the beginning of the file
             // to the end of the 2nd PNG file, which is where the juicy metadata is
@@ -49,11 +51,10 @@ namespace KKManager.Data.Cards.RG
             var count = reader.ReadInt32();
             var bytes = reader.ReadBytes(count);
 
-            var DeserialOptions = MessagePackSerializerOptions.Standard
-                .WithSecurity(MessagePackSecurity.UntrustedData);
+            var deserializeOptions = MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);
 
             // deserialize messagepack json value array defined in RG/BlockHeader.cs
-            var blockHeader = MessagePackSerializer.Deserialize<BlockHeader>(bytes, DeserialOptions);
+            var blockHeader = MessagePackSerializer.Deserialize<BlockHeader>(bytes, deserializeOptions);
 
             reader.ReadInt64();
             var position = reader.BaseStream.Position;
@@ -67,7 +68,7 @@ namespace KKManager.Data.Cards.RG
                 {
                     reader.BaseStream.Seek(position + info.pos, SeekOrigin.Begin);
                     var parameterBytes = reader.ReadBytes((int)info.size);
-                    parameter = MessagePackSerializer.Deserialize<ChaFileParameter>(parameterBytes, DeserialOptions);
+                    parameter = MessagePackSerializer.Deserialize<ChaFileParameter>(parameterBytes, deserializeOptions);
                 }
             }
 
@@ -80,15 +81,21 @@ namespace KKManager.Data.Cards.RG
 
                 extData = MessagePackSerializer.Deserialize<Dictionary<string, PluginData>>(parameterBytes);
             }
+            var extendedSize = info != null ? Util.FileSize.FromBytes((int)info.size) : Util.FileSize.Empty;
 
-            var card = new RoomGirlCard(file, gameType, extData, parameter);
+            var card = new RoomGirlCard(file, gameType, extData, extendedSize, parameter, loadVersion)
+            {
+                Language = language,
+                UserID = userID,
+                DataID = dataID,
+            };
 
             return card;
         }
 
         public List<string> GetTraits(List<byte> features)
         {
-            var Traits = new List<string>();
+            var traits = new List<string>();
 
             string[] traitLookup =
             {
@@ -112,16 +119,16 @@ namespace KKManager.Data.Cards.RG
 
             foreach (var attribute in features)
             {
-                if (attribute < 0 || attribute > 15) Traits.Add("Invalid");
-                else if (traitLookup.Length > attribute) Traits.Add(traitLookup[attribute]);
-                else Traits.Add("Unknown");
+                if (attribute > 15) traits.Add("Invalid");
+                else if (traitLookup.Length > attribute) traits.Add(traitLookup[attribute]);
+                else traits.Add(KKManager.Properties.Resources.Unknown);
             }
-            return Traits;
+            return traits;
         }
 
         public List<string> GetFetishes(List<byte> propensity)
         {
-            var Fetishes = new List<string>();
+            var fetishes = new List<string>();
         
             string[] fetishLookup =
             {
@@ -139,11 +146,11 @@ namespace KKManager.Data.Cards.RG
 
             foreach (var kink in propensity)
             {
-                if (kink < 0 || kink > 12) Fetishes.Add("Invalid");
-                else if (fetishLookup.Length > kink) Fetishes.Add(fetishLookup[kink]);
-                else Fetishes.Add("Unknown");
+                if (kink > 12) fetishes.Add("Invalid");
+                else if (fetishLookup.Length > kink) fetishes.Add(fetishLookup[kink]);
+                else fetishes.Add(KKManager.Properties.Resources.Unknown);
             }
-            return Fetishes;
+            return fetishes;
         }
 
         // personality is actually profession lol
@@ -167,7 +174,7 @@ namespace KKManager.Data.Cards.RG
 
             if (profession < 0 || profession > 12) return "Invalid";
             else if (professionLookup.Length > profession) return professionLookup[profession];
-            else return "Unknown";
+            else return KKManager.Properties.Resources.Unknown;
         }
 
         public static string GetBirthMonth(int birthMonth)
@@ -191,7 +198,7 @@ namespace KKManager.Data.Cards.RG
 
             if (birthMonth < 1 || birthMonth > 12) return "Invalid";
             else if (birthMonthLookup.Length > birthMonth) return birthMonthLookup[birthMonth];
-            else return "Unknown";
+            else return KKManager.Properties.Resources.Unknown;
         }
     }
 }

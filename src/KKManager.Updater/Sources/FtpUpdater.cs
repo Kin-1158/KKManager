@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentFTP;
+using FluentFTP.Helpers;
 using FluentFTP.Proxy;
 using KKManager.Properties;
 using KKManager.Updater.Data;
@@ -17,9 +19,69 @@ namespace KKManager.Updater.Sources
     {
         private readonly FtpClient _client;
 
-        private FtpListItem[] _allNodes;
+        private Dictionary<string, FtpListItem> AllNodesLookup
+        {
+            get
+            {
+                if (_allNodesLookup == null)
+                    PopulateNodeLookups(CancellationToken.None).Wait();
+                return _allNodesLookup;
+            }
+        }
 
-        public FtpUpdater(Uri serverUri, int discoveryPriority, int downloadPriority = 1, NetworkCredential credentials = null) : base(serverUri.Host, discoveryPriority, downloadPriority)
+        public Dictionary<FtpListItem, string> AllNodesNameLookup
+        {
+            get
+            {
+                if (_allNodesNameLookup == null)
+                    PopulateNodeLookups(CancellationToken.None).Wait();
+                return _allNodesNameLookup;
+            }
+        }
+
+        public ILookup<string, FtpListItem> ChildNodesLookup
+        {
+            get
+            {
+                if (_childNodesLookup == null)
+                    PopulateNodeLookups(CancellationToken.None).Wait();
+                return _childNodesLookup;
+            }
+        }
+
+        private async Task PopulateNodeLookups(CancellationToken cancellationToken)
+        {
+            if (_childNodesLookup != null) return;
+
+            var allNodes = await _client.GetListingAsync("/", FtpListOption.Recursive | FtpListOption.Size, cancellationToken).ConfigureAwait(false);
+
+            // Deal with case-insensitive servers having duplicate files with different cases
+            var groups = allNodes.GroupBy(x => x.FullName, StringComparer.InvariantCultureIgnoreCase);
+#if DEBUG
+            foreach (var group in groups)
+            {
+                if (group.Count() > 1)
+                    Console.WriteLine($"Multiple copies on [{Origin}]: {string.Join(" | ", group.Select(x => x.FullName))}");
+            }
+#endif
+            _allNodesLookup = groups.Select(x => x.OrderByDescending(GetDate).First()).ToDictionary(
+                item => GetNormalizedNodeName(item.FullName),
+                item => item);
+            _allNodesNameLookup = AllNodesLookup.ToDictionary(x => x.Value, x => x.Key);
+
+            _childNodesLookup = AllNodesLookup.ToLookup(x =>
+            {
+                var normalizedNodeName = GetNormalizedNodeName(Path.GetDirectoryName(x.Key));
+                Debug.Assert(x.Key.StartsWith(normalizedNodeName), "wtf " + normalizedNodeName + " - " + x.Key);
+                return normalizedNodeName;
+            }, x => x.Value);
+        }
+        private Dictionary<FtpListItem, string> _allNodesNameLookup;
+        private ILookup<string, FtpListItem> _childNodesLookup;
+        private Dictionary<string, FtpListItem> _allNodesLookup;
+
+        public FtpUpdater(Uri serverUri, int discoveryPriority, int downloadPriority = 1, NetworkCredential credentials = null, int maxConcurrentDownloads = 1)
+            : base(serverUri.Host, discoveryPriority, downloadPriority, maxConcurrentDownloads, true)
         {
             if (serverUri == null) throw new ArgumentNullException(nameof(serverUri));
 
@@ -51,8 +113,11 @@ namespace KKManager.Updater.Sources
 
             _client.EncryptionMode = FtpEncryptionMode.Explicit;
             _client.DataConnectionEncryption = true;
-            // Retrying is handled higher up the tree
-            _client.RetryAttempts = 1;
+            _client.RetryAttempts = 3;
+            _client.DownloadDataType = FtpDataType.Binary;
+            _client.ListingDataType = FtpDataType.Binary;
+
+            FtpTrace.EnableTracing = false;
         }
 
         public override void Dispose()
@@ -60,44 +125,54 @@ namespace KKManager.Updater.Sources
             _client.Dispose();
         }
 
-        public override async Task<List<UpdateTask>> GetUpdateItems(CancellationToken cancellationToken)
+        public override async Task<List<UpdateTask>> GetUpdateItems(CancellationToken cancellationToken, bool onlyDiscover, IProgress<float> progressCallback)
         {
             await Connect(cancellationToken);
-            _allNodes = await _client.GetListingAsync("/", FtpListOption.Recursive | FtpListOption.Size, cancellationToken);
-            return await base.GetUpdateItems(cancellationToken);
+
+            return await base.GetUpdateItems(cancellationToken, onlyDiscover, progressCallback);
+        }
+
+        private static string GetNormalizedNodeName(string itemFullName)
+        {
+            return PathTools.NormalizePath(itemFullName).Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
         }
 
         protected override async Task<Stream> DownloadFileAsync(string updateFileName, CancellationToken cancellationToken)
         {
-            var item = GetRemoteItem(updateFileName);
-            if (item == null)
-                throw new FileNotFoundException("File doesn't exist on host");
+            //var item = GetRemoteItem(updateFileName);
+            //if (item == null)
+            //    throw new FileNotFoundException("File doesn't exist on host");
 
             cancellationToken.ThrowIfCancellationRequested();
             var str = new MemoryStream();
-            if (await _client.DownloadAsync(str, updateFileName, 0, null, cancellationToken))
+            if (await _client.DownloadAsync(str, updateFileName, 0, null, cancellationToken).ConfigureAwait(false))
             {
                 str.Seek(0, SeekOrigin.Begin);
                 return str;
             }
-            // Cleanup if download fails
-            str.Dispose();
-            cancellationToken.ThrowIfCancellationRequested();
-            throw new IOException("Failed to download file");
+            else
+            {
+                // Cleanup if download fails
+                str.Dispose();
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new IOException("Failed to download file");
+            }
         }
 
-        protected override IRemoteItem GetRemoteRootItem(string serverPath)
+        protected override async Task<IRemoteItem> GetRemoteRootItem(string serverPath, CancellationToken cancellationToken)
         {
             if (serverPath == null) throw new ArgumentNullException(nameof(serverPath));
-            FtpListItem remote = GetRemoteItem(serverPath);
-            if (remote == null) return null;
+
+            await PopulateNodeLookups(cancellationToken).ConfigureAwait(false);
+
+            if (!AllNodesLookup.TryGetValue(GetNormalizedNodeName(serverPath), out var remote) || remote == null)
+            {
+                Debug.Fail("Could not find " + serverPath);
+                return null;
+            }
+
             var remoteItem = new FtpRemoteItem(remote, this, remote.FullName);
             return remoteItem;
-        }
-
-        private FtpListItem GetRemoteItem(string serverPath)
-        {
-            return _allNodes.FirstOrDefault(item => PathTools.PathsEqual(item.FullName, serverPath));
         }
 
         private async Task Connect(CancellationToken cancellationToken)
@@ -107,8 +182,8 @@ namespace KKManager.Updater.Sources
                 // Need to wrap the connect into a new task because it can block main thread when failing to connect
                 await Task.Run(async () =>
                 {
-                    await _client.AutoConnectAsync(cancellationToken);
-                }, cancellationToken);
+                    await _client.AutoConnectAsync(cancellationToken).ConfigureAwait(false);
+                }, cancellationToken).ConfigureAwait(false);
 
                 // todo hack, some servers don't announce the capability, needed for proper functionality
                 _client.RecursiveList = true;
@@ -126,32 +201,22 @@ namespace KKManager.Updater.Sources
             if (remoteDir == null) throw new ArgumentNullException(nameof(remoteDir));
             if (remoteDir.Type != FtpFileSystemObjectType.Directory) throw new ArgumentException("remoteDir has to be a directory");
 
-            var remoteDirName = PathTools.NormalizePath(remoteDir.FullName) + "/";
-            var remoteDirDepth = remoteDirName.Count(c => c == '/' || c == '\\');
-
-            return _allNodes.Where(
-                item =>
-                {
-                    if (item == remoteDir) return false;
-                    var itemFilename = PathTools.NormalizePath(item.FullName);
-                    // Make sure it's inside the directory and not inside one of the subdirectories
-                    return itemFilename.StartsWith(remoteDirName, StringComparison.OrdinalIgnoreCase) &&
-                           itemFilename.Count(c => c == '/' || c == '\\') == remoteDirDepth;
-                });
+            var name = AllNodesNameLookup[remoteDir];
+            return ChildNodesLookup[name];
         }
 
         private async Task UpdateItem(FtpListItem sourceItem, FileInfo targetPath, IProgress<double> progressCallback, CancellationToken cancellationToken)
         {
             // Delete old file if any exists so the download doesn't try to append to it. Append mode is needed for retrying downloads to resume instead of restarting
-            targetPath.Delete();
+            await targetPath.SafeDelete();
 
-            await Connect(cancellationToken);
+            await Connect(cancellationToken).ConfigureAwait(false);
 
             await _client.DownloadFileAsync(
                 targetPath.FullName, sourceItem.FullName,
                 FtpLocalExists.Resume, FtpVerify.Retry | FtpVerify.Delete | FtpVerify.Throw,
                 new Progress<FtpProgress>(progress => progressCallback.Report(progress.Progress)),
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
 
         private sealed class FtpRemoteItem : IRemoteItem
@@ -194,7 +259,7 @@ namespace KKManager.Updater.Sources
 
             public async Task Download(FileInfo downloadTarget, Progress<double> progressCallback, CancellationToken cancellationToken)
             {
-                await Source.UpdateItem(SourceItem, downloadTarget, progressCallback, cancellationToken);
+                await Source.UpdateItem(SourceItem, downloadTarget, progressCallback, cancellationToken).ConfigureAwait(false);
             }
         }
     }

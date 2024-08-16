@@ -1,10 +1,16 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using BrightIdeasSoftware;
+using KKManager.Data.Plugins;
+using KKManager.Data.Zipmods;
 using KKManager.Functions;
+using KKManager.Updater.Data;
 using KKManager.Updater.Downloader;
 using KKManager.Updater.Properties;
 using KKManager.Updater.Sources;
@@ -16,6 +22,7 @@ namespace KKManager.Updater.Windows
     public partial class ModUpdateProgressDialog : Form
     {
         private readonly CancellationTokenSource _cancelToken = new CancellationTokenSource();
+        private readonly List<KeyValuePair<FileInfo, string>> _reEnabledMods = new List<KeyValuePair<FileInfo, string>>();
         private UpdateSourceBase[] _updaters;
         private string[] _autoInstallGuids;
         private FileSize _overallSize;
@@ -31,6 +38,7 @@ namespace KKManager.Updater.Windows
                 case GameType.AiShoujoSteam:
                 case GameType.AiShoujo:
                 case GameType.HoneySelect2:
+                case GameType.RoomGirl:
                     pictureBox1.Image = Resources.aichika;
                     break;
 
@@ -41,7 +49,9 @@ namespace KKManager.Updater.Windows
                     pictureBox1.Image = Resources.chikajump;
                     break;
 
-                case GameType.Unknown:
+                default:
+                    Debug.Fail("Unhandled game type: " + InstallDirectoryHelper.GameType);
+                    Console.WriteLine("WARNING: Unhandled game type: " + InstallDirectoryHelper.GameType);
                     break;
             }
         }
@@ -62,14 +72,65 @@ namespace KKManager.Updater.Windows
 
             var w = new ModUpdateProgressDialog();
             w._updaters = updaters;
+#if DEBUG
+            //w._updaters = w._updaters.Where(x => x.Origin.Contains("hf.honeyselect2.com")).ToArray(); //todo remove or improve
+#endif
             w._autoInstallGuids = autoInstallGuids;
             return w;
         }
 
         private async void ModUpdateProgress_Shown(object sender, EventArgs e)
         {
-            var averageDownloadSpeed = new MovingAverage(20);
-            var downloadStartTime = DateTime.MinValue;
+            var averageDownloadSpeed = new MovingAverage(25);
+            var averageDownloadSpeedFast = new MovingAverage(4);
+            var downloadStartTime = DateTime.Now;
+            UpdateDownloadCoordinator downloader = null;
+
+            IReadOnlyList<UpdateDownloadItem> downloadItems = null;
+            var lastCompletedSize = FileSize.Empty;
+            void DoStatusLabelUpdate(object o, EventArgs args)
+            {
+                if (downloadItems == null) throw new ArgumentNullException(nameof(downloadItems));
+
+                var itemCount = fastObjectListView1.GetItemCount();
+                if (itemCount > 0)
+                {
+                    fastObjectListView1.BeginUpdate();
+                    fastObjectListView1.RedrawItems(0, itemCount - 1, true);
+                    // Needed if user changes sorting column
+                    //fastObjectListView1.SecondarySortColumn = olvColumnNo;
+                    fastObjectListView1.Sort();
+                    fastObjectListView1.EndUpdate();
+                }
+
+                _completedSize = FileSize.SumFileSizes(downloadItems.Select(x => x.GetDownloadedSize()));
+
+                var totalPercent = (double)_completedSize.GetKbSize() / _overallSize.GetKbSize() * 100d;
+                if (double.IsNaN(totalPercent)) totalPercent = 0;
+
+                // Download speed calc
+                var secondsPassed = updateTimer.Interval / 1000d;
+                var downloadedSinceLast = FileSize.FromKilobytes((long)((_completedSize - lastCompletedSize).GetKbSize() / secondsPassed));
+                lastCompletedSize = _completedSize;
+                averageDownloadSpeed.Sample(downloadedSinceLast.GetKbSize());
+                averageDownloadSpeedFast.Sample(downloadedSinceLast.GetKbSize());
+                var etaSeconds = (_overallSize - _completedSize).GetKbSize() / (double)averageDownloadSpeed.GetAverage();
+                var eta = double.IsNaN(etaSeconds) || etaSeconds < 0 || etaSeconds > TimeSpan.MaxValue.TotalSeconds
+                    ? KKManager.Properties.Resources.Unknown
+                    : TimeSpan.FromSeconds(etaSeconds).GetReadableTimespan();
+
+                var text = $"Overall: {totalPercent:F1}% done  ({_completedSize} out of {_overallSize})";
+
+                var uploadSpeed = TorrentUpdater.GetCurrentUpload();
+                if (uploadSpeed.HasValue) text += $" | Seeding: {FileSize.FromBytes(uploadSpeed.Value)}/s";
+
+                text += $"\r\nSpeed: {FileSize.FromKilobytes(averageDownloadSpeedFast.GetAverage())}/s  (ETA: {eta})";
+
+                labelPercent.Text = text;
+
+                progressBar1.Value = Math.Min((int)Math.Round(totalPercent * 10), progressBar1.Maximum);
+            }
+
             try
             {
                 #region Initialize UI
@@ -91,6 +152,12 @@ namespace KKManager.Updater.Windows
                     labelPercent.Text += offsetStr + "( o . o)";
                 }
 
+                if (!KKManager.Properties.Settings.Default.P2P_SettingsShown)
+                {
+                    using (var settingsDialog = new P2PSettingsDialog())
+                        settingsDialog.ShowDialog(this);
+                }
+
                 olvColumnProgress.Renderer = new BarRenderer(0, 100);
                 olvColumnProgress.AspectGetter = rowObject => (int)Math.Round(((UpdateDownloadItem)rowObject).FinishPercent);
                 olvColumnSize.AspectGetter = rowObject => ((UpdateDownloadItem)rowObject).TotalSize;
@@ -98,9 +165,9 @@ namespace KKManager.Updater.Windows
                 olvColumnStatus.AspectGetter = rowObject =>
                 {
                     var item = (UpdateDownloadItem)rowObject;
-                    return item.Exceptions.Count == 0
+                    return item.Status == UpdateDownloadStatus.Cancelled || item.Exceptions.Count == 0
                         ? item.Status.ToString()
-                        : item.Status + " - " + string.Join("; ", item.Exceptions.Select(x => x.Message));
+                        : item.Status + " - " + string.Join("\n", item.GetFlattenedExceptions().Select(x => x.Message));
                 };
                 olvColumnName.AspectGetter = rowObject => ((UpdateDownloadItem)rowObject).DownloadPath.Name;
                 olvColumnNo.AspectGetter = rowObject => ((UpdateDownloadItem)rowObject).Order;
@@ -118,38 +185,58 @@ namespace KKManager.Updater.Windows
 
                 #endregion
 
-                SetStatus("Preparing...");
+                SetStatus(Resources.ModUpdateProgress_Preparing);
                 if (await ProcessWaiter.CheckForProcessesBlockingKoiDir() == false)
                     throw new OperationCanceledException();
 
                 #region Find and select updates
 
-                SetStatus("Searching for mod updates...");
-                labelPercent.Text = "Please wait, this might take a couple of minutes.";
-                var updateTasks = await UpdateSourceManager.GetUpdates(_cancelToken.Token, _updaters, _autoInstallGuids);
+                SetStatus(Resources.ModUpdateProgress_Searching);
+                labelPercent.Text = Resources.ModUpdateProgress_PleaseWait;
+                if (KKManager.Properties.Settings.Default.P2P_Enabled)
+                    labelPercent.Text += '\n' + Resources.ModUpdateProgress_PleaseWait_P2P;
+
+                progressBar1.Maximum = 1000;
+                progressBar1.Style = ProgressBarStyle.Blocks;
+
+                var progress = new Progress<float>(p => this.SafeInvoke(() => progressBar1.Value = (int)Math.Round(p * 1000)));
+
+                // Re-enable any disabled zipmods and plugins before searching for updates so that they don't get treated as missing
+                foreach (var fileInfo in InstallDirectoryHelper.PluginPath.GetFiles("*.*", SearchOption.AllDirectories))
+                {
+                    if (PluginLoader.IsDisabledPlugin(fileInfo.Extension, out var enabledExtension))
+                        AddReEnabledMod(fileInfo, enabledExtension);
+                }
+                foreach (var fileInfo in InstallDirectoryHelper.ModsPath.GetFiles("*.*", SearchOption.AllDirectories))
+                {
+                    if (SideloaderModLoader.IsDisabledZipmod(fileInfo.Extension, out var enabledExtension))
+                        AddReEnabledMod(fileInfo, enabledExtension);
+                }
+
+                var updateTasks = await Task.Run(() => UpdateSourceManager.GetUpdates(_cancelToken.Token, _updaters, _autoInstallGuids, false, progress));
+
+                progressBar1.Value = 0;
 
                 _cancelToken.Token.ThrowIfCancellationRequested();
 
-                progressBar1.Style = ProgressBarStyle.Blocks;
-
                 if (updateTasks.All(x => x.UpToDate))
                 {
-                    SetStatus("Everything is up to date!");
+                    SetStatus(Resources.ModUpdateProgress_AllUpToDate);
                     progressBar1.Value = progressBar1.Maximum;
-                    _cancelToken.Cancel();
+                    await TorrentUpdater.Start();
                     return;
                 }
 
+                var skipped = updateTasks.RemoveAll(x => x.UpToDate);
                 var isAutoInstall = _autoInstallGuids != null && _autoInstallGuids.Length > 0;
                 if (!isAutoInstall)
                 {
-                    SetStatus($"Found {updateTasks.Count} updates, waiting for user confirmation.");
+                    SetStatus(string.Format(Resources.ModUpdateProgress_UpdatesFoundConfirmation, updateTasks.Count, skipped));
                     updateTasks = ModUpdateSelectDialog.ShowWindow(this, updateTasks);
                 }
                 else
                 {
-                    var skipped = updateTasks.RemoveAll(x => x.UpToDate);
-                    SetStatus($"Found {updateTasks.Count} update tasks in silent mode, {skipped} are already up-to-date.", true, true);
+                    SetStatus($"Found {updateTasks.Count} update tasks in silent mode ({skipped} were already up-to-date).", true, true);
                 }
 
                 if (updateTasks == null)
@@ -157,14 +244,16 @@ namespace KKManager.Updater.Windows
 
                 #endregion
 
+                await TorrentUpdater.Start();
+
                 SleepControls.PreventSleepOrShutdown(Handle, "Update is in progress");
 
                 #region Set up update downloader and start downloading
 
                 downloadStartTime = DateTime.Now;
 
-                var downloader = UpdateDownloadCoordinator.Create(updateTasks);
-                var downloadItems = downloader.UpdateItems;
+                downloader = UpdateDownloadCoordinator.Create(updateTasks, _cancelToken.Token);
+                downloadItems = downloader.UpdateItems;
 
                 SetStatus($"{downloadItems.Count(items => items.DownloadSources.Count > 1)} out of {downloadItems.Count} items have more than 1 source", false, true);
 
@@ -176,47 +265,15 @@ namespace KKManager.Updater.Windows
 
                 _overallSize = FileSize.SumFileSizes(downloadItems.Select(x => x.TotalSize));
 
-                var lastCompletedSize = FileSize.Empty;
-                updateTimer.Tick += (o, args) =>
-                {
-                    var itemCount = fastObjectListView1.GetItemCount();
-                    if (itemCount > 0)
-                    {
-                        fastObjectListView1.BeginUpdate();
-                        fastObjectListView1.RedrawItems(0, itemCount - 1, true);
-                        // Needed if user changes sorting column
-                        //fastObjectListView1.SecondarySortColumn = olvColumnNo;
-                        fastObjectListView1.Sort();
-                        fastObjectListView1.EndUpdate();
-                    }
 
-                    _completedSize = FileSize.SumFileSizes(downloadItems.Select(x => x.GetDownloadedSize()));
-
-                    var totalPercent = (double)_completedSize.GetKbSize() / (double)_overallSize.GetKbSize() * 100d;
-                    if (double.IsNaN(totalPercent)) totalPercent = 0;
-
-                    // Download speed calc
-                    var secondsPassed = updateTimer.Interval / 1000d;
-                    var downloadedSinceLast = FileSize.FromKilobytes((long)((_completedSize - lastCompletedSize).GetKbSize() / secondsPassed));
-                    lastCompletedSize = _completedSize;
-                    averageDownloadSpeed.Sample(downloadedSinceLast.GetKbSize());
-                    var etaSeconds = (_overallSize - _completedSize).GetKbSize() / (double)averageDownloadSpeed.GetAverage();
-                    var eta = double.IsNaN(etaSeconds) || etaSeconds < 0 || etaSeconds > TimeSpan.MaxValue.TotalSeconds
-                        ? "Unknown"
-                        : TimeSpan.FromSeconds(etaSeconds).GetReadableTimespan();
-
-                    labelPercent.Text =
-                        $"Overall: {totalPercent:F1}% done  ({_completedSize} out of {_overallSize})\r\n" +
-                        $"Speed: {downloadedSinceLast}/s  (ETA: {eta})";
-                    //$"Speed: {downloadedSinceLast:F1}KB/s";
-
-                    progressBar1.Value = Math.Min((int)Math.Round(totalPercent * 10), progressBar1.Maximum);
-                };
+                updateTimer.Tick += DoStatusLabelUpdate;
                 updateTimer.Start();
 
-                SetStatus("Downloading updates...", true, true);
+                SetStatus(Resources.ModUpdateProgress_Downloading, true, true);
 
-                await downloader.RunUpdate(_cancelToken.Token);
+                await downloader.RunUpdate();
+
+                updateTimer.Stop();
 
                 _cancelToken.Token.ThrowIfCancellationRequested();
 
@@ -227,26 +284,25 @@ namespace KKManager.Updater.Windows
                 var failedItems = downloadItems.Where(x => x.Status == UpdateDownloadStatus.Failed).ToList();
                 var unfinishedCount = downloadItems.Count(x => x.Status != UpdateDownloadStatus.Finished);
 
-                var s = $"Successfully updated/removed {downloadItems.Count - unfinishedCount} files from {updateTasks.Count} tasks.";
+                var s = string.Format(Resources.ModUpdateProgress_Finished_Main, downloadItems.Count - unfinishedCount, updateTasks.Count);
                 if (failedItems.Any())
-                    s += $"\nFailed to update {failedItems.Count} files because some sources crashed. Check log for details.";
+                    s += '\n' + string.Format(Resources.ModUpdateProgress_Finished_Fails, failedItems.Count);
 
                 SetStatus(s, true, true);
 
-                updateTimer.Stop();
                 progressBar1.Value = progressBar1.Maximum;
                 labelPercent.Text = "";
 
                 if (failedItems.Any(x => x.Exceptions.Count > 0))
                 {
                     var exceptionMessages = failedItems
-                        .SelectMany(x => x.Exceptions)
+                        .SelectMany(x => x.GetFlattenedExceptions())
                         .Where(y => !(y is DownloadSourceCrashedException))
                         // Deal with wrapped exceptions
                         .Select(y => y.Message.Contains("InnerException") && y.InnerException != null ? y.InnerException.Message : y.Message)
                         .Distinct();
 
-                    var failDetails = "Reason(s) for failing:\n" + string.Join("\n", exceptionMessages);
+                    var failDetails = Resources.ModUpdateProgress_Finished_FailReasons + "\n" + string.Join("\n", exceptionMessages);
                     Console.WriteLine(failDetails);
                     s += " " + failDetails;
                 }
@@ -254,59 +310,91 @@ namespace KKManager.Updater.Windows
                 // Sleep before showing a messagebox since the box will block until user clicks ok
                 SleepIfNecessary();
 
-                MessageBox.Show(s, "Finished updating", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                WindowUtils.FlashWindow(Handle);
+
+                MessageBox.Show(s, Resources.ModUpdateProgress_Finished_Title, MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 #endregion
             }
             catch (OutdatedVersionException ex)
             {
-                SetStatus("KK Manager needs to be updated to get updates.", true, true);
+                SetStatus(Resources.ModUpdateProgress_Failed_Outdated, true, true);
+
+                await TorrentUpdater.Stop();
+
+                WindowUtils.FlashWindow(Handle);
+
                 ex.ShowKkmanOutdatedMessage();
             }
             catch (OperationCanceledException)
             {
-                SetStatus("Update was cancelled by the user.", true, true);
+                SetStatus(Resources.ModUpdateProgress_Failed_CancelledByUser, true, true);
             }
             catch (Exception ex)
             {
                 var exceptions = ex is AggregateException aex ? aex.Flatten().InnerExceptions : (ICollection<Exception>)new[] { ex };
 
+                SetStatus(Resources.ModUpdateProgress_Failed_Unexpected, true, true);
+                SetStatus(string.Join("\n---\n", exceptions), false, true);
+
+                await TorrentUpdater.Stop();
+
                 if (!exceptions.Any(x => x is OperationCanceledException))
                     SleepIfNecessary();
 
-                SetStatus("Unexpected crash while updating mods, aborting.", true, true);
-                SetStatus(string.Join("\n---\n", exceptions), false, true);
-                MessageBox.Show("Something unexpected happened and the update could not be completed. Make sure that your internet connection is stable, " +
-                                "and that you did not hit your download limits, then try again.\n\nError message (check log for more):\n" + string.Join("\n", exceptions.Select(x => x.Message)),
-                                "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                WindowUtils.FlashWindow(Handle);
+
+                MessageBox.Show(string.Format(Resources.ModUpdateProgress_Failed_Unexpected_Message, string.Join("\n", exceptions.Select(x => x.Message))),
+                                Resources.ModUpdateProgress_Failed_Unexpected_Title, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
+                updateTimer.Tick -= DoStatusLabelUpdate;
                 updateTimer.Stop();
+
                 checkBoxSleep.Enabled = false;
 
-                fastObjectListView1.EmptyListMsg = "Nothing was downloaded";
+                fastObjectListView1.EmptyListMsg = Resources.ModUpdateProgress_NothingWasDownloaded;
 
                 _cancelToken.Cancel();
 
                 labelPercent.Text = "";
+
+                string topText;
                 if (_completedSize != FileSize.Empty)
                 {
-                    labelPercent.Text += $"Downloaded {_completedSize} out of {_overallSize}";
-                    if (downloadStartTime != DateTime.MinValue)
-                    {
-                        var timeSpent = DateTime.Now - downloadStartTime;
-                        labelPercent.Text += $" in {timeSpent.GetReadableTimespan()}";
-                    }
-                    labelPercent.Text += "\n";
+                    topText = string.Format(Resources.ModUpdateProgress_DownloadFinishedStats, _completedSize, _overallSize, (DateTime.Now - downloadStartTime).GetReadableTimespan());
                 }
-                var averageDlSpeed = averageDownloadSpeed.GetAverage();
-                if (averageDlSpeed > 0)
-                    labelPercent.Text += $"Average download speed: {new FileSize(averageDlSpeed)}/s";
+                else
+                {
+                    topText = Resources.ModUpdateProgress_NothingWasDownloaded;
+                }
+
+                if (TorrentUpdater.GetCurrentUpload() != null)
+                {
+                    updateTimer.Tick += (o, args) =>
+                    {
+                        var uploadSpeed = TorrentUpdater.GetCurrentUpload();
+                        labelPercent.Text = uploadSpeed.HasValue
+                            ? topText + '\n' + string.Format(Resources.ModUpdateProgress_DownloadFinished_Seeding, FileSize.FromBytes(uploadSpeed.Value), TorrentUpdater.GetPeerCount())
+                            : topText;
+                    };
+                    updateTimer.Start();
+                }
+                else
+                {
+                    var averageDlSpeed = averageDownloadSpeed.GetAverage();
+                    if (averageDlSpeed > 0)
+                        topText += $"\n" + string.Format(Resources.ModUpdateProgress_DownloadFinished_Average, new FileSize(averageDlSpeed));
+                }
+
+                labelPercent.Text = topText;
 
                 progressBar1.Style = ProgressBarStyle.Blocks;
-                button1.Enabled = true;
-                button1.Text = "OK";
+                buttonCancelClose.Enabled = true;
+                buttonCancelClose.Text = Resources.ModUpdateProgress_OKbutton;
+
+                downloader?.Dispose();
 
                 if (_autoInstallGuids != null && _autoInstallGuids.Length > 0) Close();
 
@@ -336,23 +424,130 @@ namespace KKManager.Updater.Windows
                 Console.WriteLine("[Updater] " + status);
         }
 
+        private void AddReEnabledMod(FileInfo fileInfo, string enabledExtension)
+        {
+            try
+            {
+                var enabledPath = fileInfo.GetFullNameWithDifferentExtension(enabledExtension);
+                if (File.Exists(enabledPath)) return;
+                var originalPath = fileInfo.FullName;
+                Console.WriteLine($"Temporarily re-enabling mod: {originalPath}");
+                fileInfo.MoveTo(enabledPath);
+                _reEnabledMods.Add(new KeyValuePair<FileInfo, string>(fileInfo, originalPath));
+            }
+            catch (Exception e)
+            {
+                // Safe to ignore the error since last line it can throw at is the MoveTo, so it doesnt get moved and doesn't get added to the list.
+                Console.WriteLine(e);
+            }
+        }
+        private void UndoReEnabledMods()
+        {
+            foreach (var disabledMod in _reEnabledMods)
+            {
+                try
+                {
+                    var fileInfo = disabledMod.Key;
+                    var originalPath = disabledMod.Value;
+                    if (File.Exists(originalPath)) continue;
+                    Console.WriteLine($"Re-disabling mod: {originalPath}");
+                    fileInfo.MoveTo(originalPath);
+                }
+                catch (Exception e)
+                {
+                    // This shouldn't happen
+                    Console.WriteLine(e);
+                }
+            }
+            _reEnabledMods.Clear();
+        }
+
         private void button1_Click(object sender, EventArgs e)
         {
             if (_cancelToken.IsCancellationRequested)
             {
+                UseWaitCursor = true;
+                SetStatus(Resources.ModUpdateProgress_Finishing);
+                labelPercent.Text = Resources.ModUpdateProgress_ThisCouldTakeAMinute;
+                Application.DoEvents();
                 Close();
             }
             else
             {
-                button1.Enabled = false;
+                buttonCancelClose.Enabled = false;
                 _cancelToken.Cancel();
             }
         }
 
         protected override void OnClosed(EventArgs e)
         {
-            _cancelToken.Cancel();
+            Task.Run(Finish).GetAwaiter().GetResult();
+
+            UseWaitCursor = false;
+
+            _logPopup?.Dispose();
+
             base.OnClosed(e);
+        }
+
+        private async Task Finish()
+        {
+            _cancelToken.Cancel();
+
+            await TorrentUpdater.Stop();
+            await Task.Delay(200);
+
+            await RemoveTempDownloadDirectory();
+
+            UndoReEnabledMods();
+        }
+
+        private static async Task RemoveTempDownloadDirectory()
+        {
+            var downloadDirectory = UpdateItem.GetTempDownloadDirectory();
+            try
+            {
+                if (Directory.Exists(downloadDirectory))
+                    Directory.Delete(downloadDirectory, true);
+            }
+            catch
+            {
+                await Task.Delay(500);
+                try
+                {
+                    if (Directory.Exists(downloadDirectory))
+                        Directory.Delete(downloadDirectory, true);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+            }
+        }
+
+        private void buttonMinimize_Click(object sender, EventArgs e)
+        {
+            WindowState = FormWindowState.Minimized;
+        }
+
+        private LogPopup _logPopup;
+        private void buttonViewLog_Click(object sender, EventArgs e)
+        {
+            if (_logPopup != null && _logPopup.Visible)
+            {
+                if (_logPopup.WindowState == FormWindowState.Minimized)
+                    _logPopup.WindowState = FormWindowState.Normal;
+
+                _logPopup.BringToFront();
+                _logPopup.Focus();
+                return;
+            }
+
+            _logPopup?.Dispose();
+
+            _logPopup = new LogPopup();
+            _logPopup.Icon = Icon;
+            _logPopup.Show();
         }
     }
 }

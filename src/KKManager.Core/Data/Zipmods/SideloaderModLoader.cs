@@ -1,47 +1,49 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reactive.Subjects;
+using System.Reflection;
+using System.Runtime;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Xml.Linq;
+using Ionic.Zip;
+using Ionic.Zlib;
 using KKManager.Functions;
-using KKManager.Util;
+using SharpCompress.Common;
+using Sideloader;
 
 namespace KKManager.Data.Zipmods
 {
     public static class SideloaderModLoader
     {
-        public static IObservable<SideloaderModInfo> Zipmods
-        {
-            get => _zipmods ?? StartReload();
-        }
+        public static IObservable<SideloaderModInfo> Zipmods => _zipmods ?? StartReload();
 
-        private static bool _isUpdating = false;
         private static readonly object _lock = new object();
         private static ReplaySubject<SideloaderModInfo> _zipmods;
 
         public static IObservable<SideloaderModInfo> StartReload()
         {
-            var needsUpdate = false;
             lock (_lock)
             {
-                if (_zipmods == null || !_isUpdating)
+                if (_zipmods == null || _currentTask == null || _currentTask.IsCompleted)
                 {
                     _zipmods = new ReplaySubject<SideloaderModInfo>();
-                    _isUpdating = true;
-                    needsUpdate = true;
+                    _cancelSource?.Dispose();
+                    _cancelSource = new CancellationTokenSource();
+                    _currentTask = TryReadSideloaderMods(InstallDirectoryHelper.ModsPath.FullName, _zipmods, _cancelSource.Token);
                 }
             }
-            if (needsUpdate) TryReadSideloaderMods(InstallDirectoryHelper.ModsPath.FullName, _zipmods);
             return _zipmods;
         }
 
         private static CancellationTokenSource _cancelSource;
+        private static Task _currentTask;
+
         public static void CancelReload()
         {
             _cancelSource?.Cancel();
@@ -52,38 +54,35 @@ namespace KKManager.Data.Zipmods
         /// </summary>
         /// <param name="modDirectory">Directory containing the zipmods to gather info from. Usually mods directory inside game root.</param>
         /// <param name="subject"></param>
+        /// <param name="cancellationToken"></param>
         /// <param name="searchOption">Where to search</param>
-        private static void TryReadSideloaderMods(string modDirectory, ReplaySubject<SideloaderModInfo> subject, SearchOption searchOption = SearchOption.AllDirectories)
+        public static Task TryReadSideloaderMods(string modDirectory, ReplaySubject<SideloaderModInfo> subject, CancellationToken cancellationToken, SearchOption searchOption = SearchOption.AllDirectories)
         {
-            Console.WriteLine("Start loading zipmods");
+            Console.WriteLine($"Start loading zipmods from [{modDirectory}]");
 
-            _cancelSource?.Dispose();
-            _cancelSource = new CancellationTokenSource();
-            var token = _cancelSource.Token;
+            var token = cancellationToken;
 
             void ReadSideloaderModsAsync()
             {
+                var sw = Stopwatch.StartNew();
                 try
                 {
                     if (!Directory.Exists(modDirectory))
                     {
                         subject.OnCompleted();
-                        _isUpdating = false;
                         Console.WriteLine("No zipmod folder detected");
                         return;
                     }
 
-                    foreach (var file in Directory.EnumerateFiles(modDirectory, "*.*", searchOption))
+                    var files = Directory.EnumerateFiles(modDirectory, "*.*", searchOption);
+                    Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cancellationToken}, file =>
                     {
                         try
                         {
                             token.ThrowIfCancellationRequested();
 
-                            if (!IsValidZipmodExtension(Path.GetExtension(file))) continue;
+                            if (!IsValidZipmodExtension(Path.GetExtension(file))) return;
 
-                            //var modInfo = Task.Run(() => LoadFromFile(file), token);
-                            //if (!modInfo.Wait(TimeSpan.FromSeconds(8))) throw new TimeoutException();
-                            //subject.OnNext(modInfo.Result);
                             subject.OnNext(LoadFromFile(file));
                         }
                         catch (OperationCanceledException)
@@ -92,42 +91,44 @@ namespace KKManager.Data.Zipmods
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Failed to load zipmod from \"{file}\" with error: {ex}");
+                            Console.WriteLine($"Failed to load zipmod from \"{file}\" with error: {ex.ToStringDemystified()}");
                         }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
+                    });
+
+                    GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+                    GC.Collect();
                 }
                 catch (Exception ex)
                 {
+                    if (ex is AggregateException aggr)
+                        ex = aggr.Flatten().InnerExceptions.First();
+
+                    if (ex is OperationCanceledException)
+                        return;
+
                     if (ex is SecurityException || ex is UnauthorizedAccessException)
                         MessageBox.Show("Could not load information about zipmods because access to the plugins folder was denied. Check the permissions of your mods folder and try again.\n\n" + ex.Message,
                             "Load zipmods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
-                    Console.WriteLine("Crash when loading zipmods: " + ex);
+                    Console.WriteLine("Crash when loading zipmods: " + ex.ToStringDemystified());
                     subject.OnError(ex);
                 }
                 finally
                 {
-                    _isUpdating = false;
-                    Console.WriteLine("Finished loading zipmods");
+                    Console.WriteLine($"Finished loading zipmods from [{modDirectory}] in {sw.ElapsedMilliseconds}ms");
                     subject.OnCompleted();
                 }
             }
 
             try
             {
-                Task.Run(ReadSideloaderModsAsync, token);
+                var task = new Task(ReadSideloaderModsAsync, token, TaskCreationOptions.LongRunning);
+                task.Start();
+                return task;
             }
             catch (OperationCanceledException)
             {
-                _isUpdating = false;
-            }
-            catch
-            {
-                _isUpdating = false;
-                throw;
+                return Task.FromCanceled(token);
             }
         }
 
@@ -138,52 +139,88 @@ namespace KKManager.Data.Zipmods
             if (!IsValidZipmodExtension(location.Extension))
                 throw new ArgumentException($"The file {filename} has an invalid extension and can't be a zipmod", nameof(filename));
 
-            using (var zf = SharpCompress.Archives.ArchiveFactory.Open(location))
+            using (var zf = new ZipFile())
             {
-                var manifestEntry = zf.Entries.FirstOrDefault(x => PathTools.PathsEqual(x.Key, "manifest.xml"));
+                // Without this reading crashes if any entry name has invalid characters
+                zf.IgnoreDuplicateFiles = true;
+                zf.Initialize(location.FullName);
 
-                if (manifestEntry == null)
+                var manifest = Manifest.LoadFromZip(zf);
+
+                if (manifest == null)
                     throw new InvalidDataException("manifest.xml was not found in the mod archive. Make sure this is a zipmod.");
 
-                using (var fileStream = manifestEntry.OpenEntryStream())
+                var images = new List<Func<Image>>();
+                foreach (var imageFile in zf.Entries
+                                            .Where(x =>
+                                            {
+                                                try
+                                                {
+                                                    return x.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                                                           x.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+                                                }
+                                                catch (Exception e)
+                                                {
+                                                    // Handle entries with invalid characters in filename
+                                                    Console.WriteLine($"WARN: Zipmod={location.Name} Entry={x.FileName} Error={e.Message}");
+                                                    return false;
+                                                }
+                                            })
+                                            .OrderBy(x => x.FileName).Take(5))
                 {
-                    var manifest = XDocument.Load(fileStream, LoadOptions.None);
+                    var imgName = imageFile.FileName;
 
-                    if (manifest.Root?.Element("guid")?.IsEmpty != false)
-                        throw new InvalidDataException("The manifest.xml file is in an invalid format");
-
-                    var guid = manifest.Root.Element("guid")?.Value;
-                    var version = manifest.Root.Element("version")?.Value;
-                    var name = manifest.Root.Element("name")?.Value ?? location.Name;
-                    var author = manifest.Root.Element("author")?.Value;
-                    var description = manifest.Root.Element("description")?.Value;
-                    var website = manifest.Root.Element("website")?.Value;
-
-                    var images = new List<Image>();
-                    // TODO load from drive instead of caching to ram
-                    foreach (var imageFile in zf.Entries
-                        .Where(x => ".jpg".Equals(Path.GetExtension(x.Key), StringComparison.OrdinalIgnoreCase) ||
-                                    ".png".Equals(Path.GetExtension(x.Key), StringComparison.OrdinalIgnoreCase))
-                        .OrderBy(x => x.Key).Take(3))
+                    if (imageFile.CompressionLevel == CompressionLevel.None)
                     {
-                        try
+                        var prop = typeof(ZipEntry).GetProperty("FileDataPosition", BindingFlags.Instance | BindingFlags.NonPublic);
+                        if (prop == null) throw new ArgumentNullException(nameof(prop));
+                        var pos = (long)prop.GetValue(imageFile, null);
+                        images.Add(() =>
                         {
-                            using (var stream = imageFile.OpenEntryStream())
-                            using (var img = Image.FromStream(stream))
+                            try
                             {
-                                images.Add(img.GetThumbnailImage(200, 200, null, IntPtr.Zero));
+                                using (var archiveStream = new FileStream(location.FullName, FileMode.Open, FileAccess.Read, FileShare.Read))
+                                {
+                                    archiveStream.Position = pos;
+                                    using (var img = Image.FromStream(archiveStream))
+                                    {
+                                        return img.GetThumbnailImage(200, 200, null, IntPtr.Zero);
+                                    }
+                                }
                             }
-                        }
-                        catch (SystemException ex)
-                        {
-                            Console.WriteLine($"Failed to load image \"{imageFile.Key}\" from mod archive \"{location.Name}\" with error: {ex.Message}");
-                        }
+                            catch (SystemException ex)
+                            {
+                                Console.WriteLine($"Failed to load image \"{imgName}\" from mod archive \"{location.Name}\" with error: {ex.Message}");
+                                return null;
+                            }
+                        });
                     }
-
-                    var contents = zf.Entries.Where(x => !x.IsDirectory).Select(x => x.Key.Replace('/', '\\')).ToList();
-
-                    return new SideloaderModInfo(location, guid, name, version, author, description, website, images, contents);
+                    else
+                    {
+                        images.Add(() =>
+                        {
+                            try
+                            {
+                                using (var archiveStream = new FileStream(location.FullName, FileMode.Open, FileAccess.Read, FileShare.Read))
+                                using (var archive = ZipFile.Read(archiveStream))
+                                using (var imgStream = archive.Entries.First(x => x.FileName == imgName).OpenReader())
+                                using (var img = Image.FromStream(imgStream))
+                                {
+                                    return img.GetThumbnailImage(200, 200, null, IntPtr.Zero);
+                                }
+                            }
+                            catch (SystemException ex)
+                            {
+                                Console.WriteLine($"Failed to load image \"{imgName}\" from mod archive \"{location.Name}\" with error: {ex.Message}");
+                                return null;
+                            }
+                        });
+                    }
                 }
+
+                var contents = zf.Entries.Where(x => !x.IsDirectory).Select(x => x.FileName.Replace('/', '\\')).ToList();
+
+                return new SideloaderModInfo(location, manifest, images, contents);
             }
         }
 
@@ -198,6 +235,21 @@ namespace KKManager.Data.Zipmods
             };
 
             return exts.Any(x => x.Equals(extension, StringComparison.OrdinalIgnoreCase));
+        }
+        public static bool IsDisabledZipmod(string extension, out string enabledExtension)
+        {
+            if (extension.Equals(".zi_", StringComparison.OrdinalIgnoreCase))
+            {
+                enabledExtension = ".zip";
+                return true;
+            }
+            if (extension.Equals(".zi_mod", StringComparison.OrdinalIgnoreCase))
+            {
+                enabledExtension = ".zipmod";
+                return true;
+            }
+            enabledExtension = null;
+            return false;
         }
     }
 }

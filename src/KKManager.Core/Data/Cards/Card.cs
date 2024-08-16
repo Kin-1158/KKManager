@@ -16,11 +16,23 @@ namespace KKManager.Data.Cards
         public string FileSize { get; }
         public abstract CharaSex Sex { get; }
         public abstract string PersonalityName { get; }
+        [ReadOnly(true)] public virtual int Language { get; protected set; }
+        [ReadOnly(true)] public virtual string UserID { get; protected set; }
+        [ReadOnly(true)] public virtual string DataID { get; protected set; }
+        public Version Version { get; }
 
-        //[Browsable(false)]
         [DisplayName("Extended Data (plugins)")]
         [TypeConverter(typeof(DictionaryTypeConverter<string, PluginData>))]
         public Dictionary<string, PluginData> Extended { get; }
+        [DisplayName("Extended Data Size")]
+        public FileSize ExtendedSize { get; }
+
+        [ReadOnly(true), TypeConverter(typeof(ReadOnlyStringCollectionConverterWithPreview))] 
+        public string[] MissingZipmods { get; set; }
+        [ReadOnly(true), TypeConverter(typeof(ReadOnlyStringCollectionConverterWithPreview))] 
+        public string[] MissingPlugins { get; set; }
+        [ReadOnly(true), TypeConverter(typeof(ReadOnlyStringCollectionConverterWithPreview))] 
+        public string[] MissingPluginsMaybe { get; set; }
 
         public virtual Image GetCardImage()
         {
@@ -49,13 +61,14 @@ namespace KKManager.Data.Cards
             }
         }
 
-        internal Card(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended)
+        internal Card(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, FileSize extendedSize, Version version)
         {
             Location = cardFile ?? throw new ArgumentNullException(nameof(cardFile));
+            Version = version ?? throw new ArgumentNullException(nameof(version));
             Type = type;
             Extended = extended ?? new Dictionary<string, PluginData>();
-            
-     
+            ExtendedSize = extendedSize;
+
             FileSize = Util.FileSize.FromBytes(cardFile.Length).ToString();
         }
     }

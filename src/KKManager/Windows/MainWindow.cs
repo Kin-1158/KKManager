@@ -15,6 +15,7 @@ using System.Windows.Forms;
 using KKManager.Data.Plugins;
 using KKManager.Data.Zipmods;
 using KKManager.Functions;
+using KKManager.ModpackTool;
 using KKManager.Properties;
 using KKManager.SB3UGS;
 using KKManager.Updater;
@@ -34,7 +35,7 @@ namespace KKManager.Windows
     {
         private UpdateSourceBase[] _updateSources;
         public UpdateSourceBase[] GetUpdateSources() => _updateSources ?? (_updateSources = UpdateSourceManager.FindUpdateSources(Program.ProgramLocation));
-
+        
         public MainWindow()
         {
             Icon = Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location);
@@ -44,12 +45,19 @@ namespace KKManager.Windows
             Instance = this;
 
             InitializeComponent();
+            dockPanel.Theme = new VS2015LightTheme();
 
             InstallDirectoryHelper.Initialize(GetGameDirectory());
 
+            installDirectoryToolStripMenuItem.ToolTipText = InstallDirectoryHelper.GameDirectory.FullName;
+            screenshotsToolStripMenuItem.ToolTipText = InstallDirectoryHelper.ScreenshotDir;
+            charactersToolStripMenuItem.ToolTipText = InstallDirectoryHelper.CardDir;
+            scenesToolStripMenuItem.ToolTipText = InstallDirectoryHelper.SceneDir;
+            kKManagerToolStripMenuItem.ToolTipText = Program.ProgramLocation;
+
             SetupTabs();
 
-            Task.Run((Action)PopulateStartMenu);
+            Task.Run(PopulateStartMenu);
 
 #if DEBUG
             var version = Assembly.GetExecutingAssembly().GetName().Version;
@@ -58,15 +66,16 @@ namespace KKManager.Windows
 #endif
             var gameName = InstallDirectoryHelper.GameType.GetFancyGameName();
             var installDir = InstallDirectoryHelper.GameDirectory.FullName;
-            Text = $"KK Manager {version} (New downloader edition) - [{gameName}] in {installDir}";
+            Text = $"KK Manager {version} - {gameName} in {installDir}";
             Console.WriteLine($"Game: {gameName}   Path: {installDir}");
 
             Settings.Default.Binder.BindControl(checkForUpdatesOnStartupToolStripMenuItem, settings => settings.AutoUpdateSearch, this);
             Settings.Default.Binder.BindControl(useSystemProxyServerToolStripMenuItem, settings => settings.UseProxy, this);
+            Settings.Default.Binder.BindControl(tryToDeleteToRecycleBinToolStripMenuItem, settings => settings.DeleteToRecycleBin, this);
             Settings.Default.Binder.SendUpdates(this);
 
             // Before using the window location, check if isn't the default value and that it's actually visible on the screen
-            if (Settings.Default.WindowLocation != new Point(-1, -1) && 
+            if (Settings.Default.WindowLocation != new Point(-1, -1) &&
                 Screen.AllScreens.Any(s => s.WorkingArea.IntersectsWith(new Rectangle(Settings.Default.WindowLocation, Settings.Default.WindowSize))))
             {
                 StartPosition = FormStartPosition.Manual;
@@ -210,7 +219,7 @@ namespace KKManager.Windows
                     item.AutoToolTip = false;
                     item.ToolTipText = file.FullName;
 
-                    item.Click += (o, args) => { ProcessTools.SafeStartProcess(file.FullName); };
+                    item.Click += (_, _) => { ProcessTools.SafeStartProcess(file.FullName); };
 
                     try { item.Image = Icon.ExtractAssociatedIcon(file.FullName)?.ToBitmap(); }
                     catch { item.Image = null; }
@@ -259,7 +268,7 @@ namespace KKManager.Windows
 
         public IEnumerable<T> GetWindows<T>() where T : DockContent, new()
         {
-            return dockPanel.Contents.OfType<T>().Concat(dockPanel.FloatWindows.OfType<T>());
+            return dockPanel.Contents.OfType<T>();
         }
 
         public CardWindow OpenOrGetCardWindow(DirectoryInfo targetDir)
@@ -306,6 +315,7 @@ namespace KKManager.Windows
                 dockPanel.ResumeLayout(true, true);
             }
 
+            // Load defaults
             OpenOrGetCardWindow(InstallDirectoryHelper.MaleCardDir);
             OpenOrGetCardWindow(InstallDirectoryHelper.FemaleCardDir);
 
@@ -313,11 +323,9 @@ namespace KKManager.Windows
             GetOrCreateWindow<PluginsWindow>();
 
             dockPanel.DockRightPortion = 400;
-            var propertiesToolWindow = GetOrCreateWindow<PropertiesToolWindow>();
-            propertiesToolWindow.DockState = DockState.DockRight;
+            GetOrCreateWindow<PropertiesToolWindow>().Show(dockPanel, DockState.DockRight);
 
-            var logWindow = GetOrCreateWindow<LogViewer>();
-            logWindow.DockState = DockState.DockBottomAutoHide;
+            GetOrCreateWindow<LogViewer>().Show(dockPanel, DockState.DockBottomAutoHide);
         }
 
         private static IDockContent DeserializeTab(string persistString)
@@ -347,10 +355,12 @@ namespace KKManager.Windows
                 Settings.Default.DockState = Encoding.Unicode.GetString(s.ToArray());
             }
 
-            Settings.Default.WindowLocation = Location;
-            var maximized = WindowState == FormWindowState.Maximized;
-            Settings.Default.WindowMaximized = maximized;
-            if (!maximized) Settings.Default.WindowSize = Size;
+            Settings.Default.WindowMaximized = WindowState is FormWindowState.Maximized;
+
+            if (WindowState is FormWindowState.Normal)
+                Settings.Default.WindowSize = Size;
+            if (WindowState is FormWindowState.Normal or FormWindowState.Maximized)
+                Settings.Default.WindowLocation = Location;
         }
 
         private void openFemaleCardFolderToolStripMenuItem_Click(object sender, EventArgs e)
@@ -437,17 +447,19 @@ namespace KKManager.Windows
             if (plugins) PluginLoader.StartReload();
             if (sideloader) SideloaderModLoader.StartReload();
 
-            foreach (var window in GetWindows<DockContent>())
+            foreach (var window in GetWindows<DockContent>().OfType<IContentWindow>())
             {
-                if (window is PluginsWindow pw)
+                switch (window)
                 {
-                    if (plugins)
-                        pw.RefreshList();
-                }
-                else if (window is SideloaderModsWindow sm)
-                {
-                    if (sideloader)
-                        sm.RefreshList();
+                    case PluginsWindow pw:
+                        if (plugins) pw.RefreshList();
+                        break;
+                    case SideloaderModsWindow sm:
+                        if (sideloader) sm.RefreshList();
+                        break;
+                    default:
+                        window.RefreshList();
+                        break;
                 }
             }
         }
@@ -465,17 +477,17 @@ namespace KKManager.Windows
 
         private void screenshotsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            ProcessTools.SafeStartProcess(Path.Combine(InstallDirectoryHelper.GameDirectory.FullName, "UserData\\cap"));
+            ProcessTools.SafeStartProcess(InstallDirectoryHelper.ScreenshotDir);
         }
 
         private void charactersToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            ProcessTools.SafeStartProcess(Path.Combine(InstallDirectoryHelper.GameDirectory.FullName, "UserData\\chara"));
+            ProcessTools.SafeStartProcess(InstallDirectoryHelper.CardDir);
         }
 
         private void scenesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            ProcessTools.SafeStartProcess(Path.Combine(InstallDirectoryHelper.GameDirectory.FullName, "UserData\\Studio\\scene"));
+            ProcessTools.SafeStartProcess(InstallDirectoryHelper.SceneDir);
         }
 
         private void kKManagerToolStripMenuItem_Click(object sender, EventArgs e)
@@ -506,7 +518,13 @@ namespace KKManager.Windows
 
                     var updateSources = GetUpdateSources();
                     if (!updateSources.Any()) throw new IOException("No update sources are available");
+
+                    Visible = false;
+
                     ModUpdateProgressDialog.StartUpdateDialog(this, updateSources);
+
+                    Visible = true;
+                    Application.DoEvents();
                 }
                 catch (Exception ex)
                 {
@@ -515,8 +533,8 @@ namespace KKManager.Windows
                     MessageBox.Show(errorMsg, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
 
-                SideloaderModLoader.StartReload();
-                PluginLoader.StartReload();
+                _ = SideloaderModLoader.StartReload();
+                _ = PluginLoader.StartReload();
 
                 var contentWindows = GetWindows<DockContent>().OfType<IContentWindow>().ToList();
                 foreach (var window in contentWindows) window.RefreshList();
@@ -527,10 +545,11 @@ namespace KKManager.Windows
             finally
             {
                 Enabled = true;
+                Visible = true;
             }
         }
 
-        private readonly CancellationTokenSource _checkForUpdatesCancel = new CancellationTokenSource();
+        private readonly CancellationTokenSource _checkForUpdatesCancel = new();
 
         private async void MainWindow_Shown(object sender, EventArgs e)
         {
@@ -547,7 +566,7 @@ namespace KKManager.Windows
                 var updateSources = GetUpdateSources();
                 if (updateSources.Any())
                 {
-                    var results = await UpdateSourceManager.GetUpdates(_checkForUpdatesCancel.Token, updateSources);
+                    var results = await UpdateSourceManager.GetUpdates(_checkForUpdatesCancel.Token, updateSources, null, true, new Progress<float>());
                     var updates = results.Count(item => !item.UpToDate);
 
                     _checkForUpdatesCancel.Token.ThrowIfCancellationRequested();
@@ -724,13 +743,13 @@ namespace KKManager.Windows
             if (languagesToolStripMenuItem.DropDownItems.Count == 0)
             {
                 var spaceWidth = TextRenderer.MeasureText(" ", Font, Size).Width;
-                ToolStripMenuItem CreateLanguageToggle(CultureInfo x)
+                ToolStripItem CreateLanguageToggle(CultureInfo x)
                 {
                     var textWidth = TextRenderer.MeasureText(x.NativeName, Font, Size).Width;
                     return new ToolStripMenuItem(
                             $"{x.NativeName.PadRight(50 - textWidth / spaceWidth)} {x.EnglishName}",
                             null,
-                            (obj, args) =>
+                            (obj, _) =>
                             {
                                 LanguageManager.CurrentCulture = (CultureInfo)((ToolStripMenuItem)obj).Tag;
                                 LanguageManager.ApplyCurrentCulture(this);
@@ -788,6 +807,32 @@ namespace KKManager.Windows
                     ZipmodTools.RemoveDuplicateZipmodsInDir(rootDirectory, simulate);
                 }
             }
+        }
+
+        private void openModpackToolToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            GetOrCreateWindow<ModpackToolWindow>().Show(dockPanel, DockState.Document);
+        }
+
+        private void p2PDownloaderSettingsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var dialog = new P2PSettingsDialog())
+                dialog.ShowDialog(this);
+        }
+
+        private void openIndividualDownloadWebsiteToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ProcessTools.SafeStartProcess(@"https://sideload.betterrepack.com");
+        }
+
+        private void openGameLogToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            InstallDirectoryHelper.OpenLog();
+        }
+
+        private void toolStripStatusLabelStatus_Click(object sender, EventArgs e)
+        {
+            openLogViewerToolStripMenuItem_Click(sender, e);
         }
     }
 }

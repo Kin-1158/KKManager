@@ -2,18 +2,19 @@
 using System.Net;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using KKManager.Properties;
 using KKManager.Util;
 
 namespace KKManager.Functions
 {
     public static class SelfUpdater
     {
-        private static string _latestReleaseUrl = "https://github.com/IllusionMods/KKManager/releases/latest";
+        private static readonly string _LatestReleaseUrl = "https://github.com/IllusionMods/KKManager/releases/latest";
 
         public static async Task<Version> CheckLatestVersion()
         {
             // Should result in something like "https://github.com/IllusionMods/KKManager/releases/tag/v0.14.1"
-            var url = await GetFinalRedirect(_latestReleaseUrl);
+            var url = await GetFinalRedirect(_LatestReleaseUrl);
             var i = url.LastIndexOf('/');
             var tag = url.Substring(i).TrimStart('/', 'v');
             return new Version(tag);
@@ -53,9 +54,9 @@ namespace KKManager.Functions
             var isUpdateAvailable = await IsUpdateAvailable();
             if (isUpdateAvailable != true) return null;
 
-            if (MessageBox.Show("A new version of KKManager is available. Do you want to go to the download page?", "New version is available",
+            if (MessageBox.Show(Resources.SelfUpdater_NewVersionMessage, Resources.SelfUpdater_NewVersionTitle,
                 MessageBoxButtons.YesNo, MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) == DialogResult.Yes)
-                return ProcessTools.SafeStartProcess(_latestReleaseUrl) != null;
+                return ProcessTools.SafeStartProcess(_LatestReleaseUrl) != null;
             else
                 return false;
         }
@@ -70,37 +71,51 @@ namespace KKManager.Functions
             string newUrl = url;
             do
             {
-                HttpWebRequest req = null;
-                HttpWebResponse resp = null;
+                WebResponse resp = null;
                 try
                 {
-                    req = (HttpWebRequest)HttpWebRequest.Create(url);
+                    var req = (HttpWebRequest)WebRequest.Create(url);
                     req.Method = "HEAD";
                     req.AllowAutoRedirect = false;
-                    resp = (HttpWebResponse)await req.GetResponseAsync();
-                    switch (resp.StatusCode)
+                    try
                     {
-                        case HttpStatusCode.OK:
-                            return newUrl;
-                        case HttpStatusCode.Redirect:
-                        case HttpStatusCode.MovedPermanently:
-                        case HttpStatusCode.RedirectKeepVerb:
-                        case HttpStatusCode.RedirectMethod:
-                            newUrl = resp.Headers["Location"];
-                            if (newUrl == null)
-                                return url;
+                        var httpresp = (HttpWebResponse)await req.GetResponseAsync();
 
-                            if (newUrl.IndexOf("://", System.StringComparison.Ordinal) == -1)
-                            {
-                                // Doesn't have a URL Schema, meaning it's a relative or absolute URL
-                                Uri u = new Uri(new Uri(url), newUrl);
-                                newUrl = u.ToString();
-                            }
+                        switch (httpresp.StatusCode)
+                        {
+                            case HttpStatusCode.OK:
+                                return newUrl;
+                            case HttpStatusCode.Redirect:
+                            case HttpStatusCode.MovedPermanently:
+                            case HttpStatusCode.RedirectKeepVerb:
+                            case HttpStatusCode.RedirectMethod:
+                                // Handle redirects below
+                                break;
+                            default:
+                                return newUrl;
+                        }
 
-                            break;
-                        default:
-                            return newUrl;
+                        resp = httpresp;
                     }
+                    catch (WebException ex)
+                    {
+                        // Handle redirects below. Needed for .NET Core because for some reason it throws on success
+                        if (ex.Message.Contains("302"))
+                            resp = ex.Response;
+                        else throw;
+                    }
+
+                    newUrl = resp.Headers["Location"];
+                    if (newUrl == null)
+                        return url;
+
+                    if (newUrl.IndexOf("://", StringComparison.Ordinal) == -1)
+                    {
+                        // Doesn't have a URL Schema, meaning it's a relative or absolute URL
+                        Uri u = new Uri(new Uri(url), newUrl);
+                        newUrl = u.ToString();
+                    }
+
                     url = newUrl;
                 }
                 catch (WebException)
@@ -108,7 +123,7 @@ namespace KKManager.Functions
                     // Return the last known good URL
                     return newUrl;
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     return null;
                 }

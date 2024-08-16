@@ -149,14 +149,20 @@
   <data name="olvColumnGuid.Width" type="System.Int32, mscorlib">
     <value>146</value>
   </data>
+  <data name="olvColumnGames.DisplayIndex" type="System.Int32, mscorlib">
+    <value>5</value>
+  </data>
+  <data name="olvColumnGames.Text" xml:space="preserve">
+    <value>Games</value>
+  </data>
+  <data name="olvColumnGames.Width" type="System.Int32, mscorlib">
+    <value>90</value>
+  </data>
   <data name="olvColumnFilename.Text" xml:space="preserve">
     <value>File name</value>
   </data>
   <data name="olvColumnFilename.Width" type="System.Int32, mscorlib">
     <value>91</value>
-  </data>
-  <data name="olvColumnPath.DisplayIndex" type="System.Int32, mscorlib">
-    <value>6</value>
   </data>
   <data name="olvColumnPath.Text" xml:space="preserve">
     <value>File path</value>
@@ -396,6 +402,12 @@
   <data name="&gt;&gt;olvColumnGuid.Type" xml:space="preserve">
     <value>BrightIdeasSoftware.OLVColumn, ObjectListView, Version=2.9.1.1072, Culture=neutral, PublicKeyToken=b1c5bf581481bcd4</value>
   </data>
+  <data name="&gt;&gt;olvColumnGames.Name" xml:space="preserve">
+    <value>olvColumnGames</value>
+  </data>
+  <data name="&gt;&gt;olvColumnGames.Type" xml:space="preserve">
+    <value>BrightIdeasSoftware.OLVColumn, ObjectListView, Version=2.9.1.1072, Culture=neutral, PublicKeyToken=b1c5bf581481bcd4</value>
+  </data>
   <data name="&gt;&gt;olvColumnFilename.Name" xml:space="preserve">
     <value>olvColumnFilename</value>
   </data>
@@ -484,6 +496,6 @@
     <value>SideloaderModsWindow</value>
   </data>
   <data name="&gt;&gt;$this.Type" xml:space="preserve">
-    <value>WeifenLuo.WinFormsUI.Docking.DockContent, WeifenLuo.WinFormsUI.Docking, Version=3.0.6.0, Culture=neutral, PublicKeyToken=5cded1a1a0a7b481</value>
+    <value>WeifenLuo.WinFormsUI.Docking.DockContent, WeifenLuo.WinFormsUI.Docking, Version=1.0.0.0, Culture=neutral, PublicKeyToken=5cded1a1a0a7b481</value>
   </data>
 </root>

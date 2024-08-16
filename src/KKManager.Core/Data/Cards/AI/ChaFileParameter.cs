@@ -24,7 +24,7 @@ namespace KKManager.Data.Cards.AI
 
 		public float voiceRate { get; set; } = 0.5f;
 
-		[TypeConverter(typeof(CollectionConverter))]
+		[TypeConverter(typeof(CollectionConverter))] //todo doesn't work
         public HashSet<int> hsWish { get; set; } = new HashSet<int>();
 
 		public bool futanari { get; set; }
@@ -46,11 +46,11 @@ namespace KKManager.Data.Cards.AI
 
 		public float voiceRate { get; set; } = 0.5f;
 
-		public byte trait { get; set; }
+		public ChaFileDefine.Trait trait { get; set; }
 
-		public byte mind { get; set; }
+		public ChaFileDefine.Mentality mind { get; set; }
 
-		public byte hAttribute { get; set; }
+		public ChaFileDefine.SexTrait hAttribute { get; set; }
 
 		[IgnoreMember]
 		public static readonly string BlockName = "Parameter2";
@@ -99,7 +99,7 @@ namespace KKManager.Data.Cards.AI
 
 		public bool isHAddTaii1 { get; set; }
 
-		public ChaFileGameInfo()
+		/*public ChaFileGameInfo()
 		{
 			//for (int i = 0; i < 8; i++)
 			//{
@@ -115,7 +115,7 @@ namespace KKManager.Data.Cards.AI
 			//	normalSkill[k] = -1;
 			//	hSkill[k] = -1;
 			//}
-		}
+		}*/
 
 		[IgnoreMember]
 		public static readonly string BlockName = "GameInfo";
@@ -154,9 +154,9 @@ namespace KKManager.Data.Cards.AI
 
 		public int Dependence{ get; set; }
 
-		public State nowState{ get; set; }
+		public ChaFileDefine.State nowState{ get; set; }
 
-		public State nowDrawState{ get; set; }
+		public ChaFileDefine.State nowDrawState{ get; set; }
 
 		public bool lockNowState{ get; set; }
 
@@ -174,7 +174,7 @@ namespace KKManager.Data.Cards.AI
 
 		public int alertness{ get; set; }
 
-		public State calcState{ get; set; }
+		public ChaFileDefine.State calcState{ get; set; }
 
 		public byte escapeFlag{ get; set; }
 
@@ -224,16 +224,5 @@ namespace KKManager.Data.Cards.AI
 		public static readonly string BlockName = "GameInfo2";
 
 		public override string ToString() => "HS2 Game Progress";
-
-		public enum State
-		{
-			Blank,
-			Favor,
-			Enjoyment,
-			Aversion,
-			Slavery,
-			Broken,
-			Dependence
-		}
 	}
 }

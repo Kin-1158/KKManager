@@ -1,6 +1,10 @@
-﻿using System;
+﻿using KKManager.Properties;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Windows.Forms;
 
 namespace KKManager.Functions
 {
@@ -11,6 +15,7 @@ namespace KKManager.Functions
         private static DirectoryInfo _femaleCardDir;
         private static DirectoryInfo _maleCardDir;
         private static DirectoryInfo _modsPath;
+        private static DirectoryInfo _tempPath;
         public static DirectoryInfo GameDirectory
         {
             get
@@ -56,6 +61,19 @@ namespace KKManager.Functions
             }
             private set => _femaleCardDir = value;
         }
+        public static DirectoryInfo TempDir
+        {
+            get
+            {
+                ThrowIfNotInitialized();
+                return _tempPath;
+            }
+            private set => _tempPath = value;
+        }
+
+        public static string ScreenshotDir => Path.Combine(GameDirectory.FullName, "UserData\\cap");
+        public static string CardDir => Path.Combine(GameDirectory.FullName, "UserData\\chara");
+        public static string SceneDir => Path.Combine(GameDirectory.FullName, "UserData\\Studio\\scene");
 
         public static GameType GameType { get; private set; } = GameType.Unknown;
 
@@ -75,6 +93,8 @@ namespace KKManager.Functions
                 new Tuple<string, GameType>("HoneySelect2.exe", GameType.HoneySelect2),
                 new Tuple<string, GameType>("KoikatsuSunshine.exe", GameType.KoikatsuSunshine),
                 new Tuple<string, GameType>("RoomGirl.exe", GameType.RoomGirl),
+                new Tuple<string, GameType>("HoneyCome.exe", GameType.HoneyCome),
+                new Tuple<string, GameType>("HoneyComeccp.exe", GameType.HoneyComeSteam),
             };
 
             GameType = gameCheck.FirstOrDefault(x => File.Exists(Path.Combine(path, x.Item1)))?.Item2 ?? GameType.Unknown;
@@ -82,6 +102,7 @@ namespace KKManager.Functions
             FemaleCardDir = Directory.CreateDirectory(Path.Combine(GameDirectory.FullName, @"UserData\chara\female"));
             ModsPath = Directory.CreateDirectory(Path.Combine(GameDirectory.FullName, "mods"));
             PluginPath = Directory.CreateDirectory(Path.Combine(GameDirectory.FullName, "BepInEx"));
+            TempDir = Directory.CreateDirectory(Path.Combine(GameDirectory.FullName, "temp"));
         }
 
         /// <summary>
@@ -120,7 +141,7 @@ namespace KKManager.Functions
                 //               File.Exists(Path.Combine(path, "CharaStudio.exe"));
 
                 var anyDatas = Directory.GetDirectories(path)
-                    .Any(x => x.EndsWith("_Data", StringComparison.OrdinalIgnoreCase));
+                                        .Any(x => x.EndsWith("_Data", StringComparison.OrdinalIgnoreCase));
                 var abdataExist = File.Exists(Path.Combine(path, "abdata/abdata"));
 
                 // todo use this to offer to install bepinex and other mods / run update wizzard
@@ -148,7 +169,50 @@ namespace KKManager.Functions
                 case GameType.HoneySelect2: return "HoneySelect2";
                 case GameType.KoikatsuSunshine: return "KoikatsuSunshine";
                 case GameType.RoomGirl: return "Room Girl";
+                case GameType.HoneyCome: return "HoneyCome";
+                case GameType.HoneyComeSteam: return "HoneyCome come come party";
                 default: throw new ArgumentOutOfRangeException(nameof(gameType), gameType, null);
+            }
+        }
+
+        /// <summary>
+        /// Figure out where the log file is written to and open it.
+        /// </summary>
+        public static void OpenLog()
+        {
+            try
+            {
+                bool TryOpen(string path)
+                {
+                    if (path == null) return false;
+                    try
+                    {
+                        Process.Start(path);
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }
+
+                var rootDir = GameDirectory.FullName;
+                var candidates = new List<string>();
+
+                // BepInEx 5.x log file, can be "LogOutput.log.1" or higher if multiple game instances run.
+                candidates.AddRange(Directory.GetFiles(rootDir, "LogOutput.log*", SearchOption.AllDirectories));
+                // Unity built-in log file, by default inside _Data dir, disabled, or somewhere in appdata. Can be moved to game root by BepInEx preloader if configured.
+                candidates.AddRange(Directory.GetFiles(rootDir, "output_log.txt", SearchOption.AllDirectories));
+
+                var latestLog = candidates.Where(File.Exists).OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+                if (TryOpen(latestLog)) return;
+
+                throw new FileNotFoundException("No log files were found");
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(exception);
+                MessageBox.Show(string.Format(Resources.OpenGameLogFailedMessage, exception.Message), Resources.OpenGameLogMessageTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

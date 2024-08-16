@@ -18,7 +18,7 @@ namespace KKManager.SB3UGS
         {
             if (_pluginDirName != null) return;
 
-            var assLocation = new DirectoryInfo(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
+            var assLocation = new DirectoryInfo(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? throw new InvalidOperationException("Invalid location " + Assembly.GetExecutingAssembly().Location));
             var directoryName = new DirectoryInfo(Path.Combine(assLocation.FullName, "SB3UGS"));
             _pluginDirName = new DirectoryInfo(Path.Combine(directoryName.FullName, "plugins"));
 
@@ -35,17 +35,18 @@ namespace KKManager.SB3UGS
                 {
                     Console.WriteLine("Found " + target.Name + " - attempting to extract");
 
-                    var extr = ArchiveFactory.Open(target);
+                    using (var extr = ArchiveFactory.Open(target))
+                    {
+                        if (!extr.IsComplete)
+                            throw new IOException("Archive " + target.Name + " is not valid or is corrupted");
 
-                    if (!extr.IsComplete)
-                        throw new IOException("Archive " + target.Name + " is not valid or is corrupted");
+                        directoryName.Create();
+                        extr.ExtractArchiveToDirectory(directoryName.FullName);
 
-                    directoryName.Create();
-                    extr.ExtractArchiveToDirectory(directoryName.FullName);
-
-                    _pluginDirName.Refresh();
-                    if (!_pluginDirName.Exists)
-                        throw new IOException("Archive " + target.Name + " did not contain the correct files or it failed to extract");
+                        _pluginDirName.Refresh();
+                        if (!_pluginDirName.Exists)
+                            throw new IOException("Archive " + target.Name + " did not contain the correct files or it failed to extract");
+                    }
                 }
             }
 

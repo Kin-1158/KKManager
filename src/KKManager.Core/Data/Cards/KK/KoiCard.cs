@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using KKManager.Util;
 using MessagePack;
 
 namespace KKManager.Data.Cards.KK
@@ -13,7 +15,11 @@ namespace KKManager.Data.Cards.KK
 
         public ChaFileParameter Parameter { get; }
 
-        private KoiCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, ChaFileParameter parameter) : base(cardFile, type, extended)
+        [Browsable(false)] public override int Language => -1;
+        [Browsable(false)] public override string UserID => null;
+        [Browsable(false)] public override string DataID => null;
+
+        private KoiCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, FileSize extendedSize, ChaFileParameter parameter, Version loadVersion) : base(cardFile, type, extended, extendedSize, loadVersion)
         {
             Parameter = parameter;
         }
@@ -63,8 +69,9 @@ namespace KKManager.Data.Cards.KK
 
                 extData = MessagePackSerializer.Deserialize<Dictionary<string, PluginData>>(parameterBytes);
             }
+            var extendedSize = info != null ? Util.FileSize.FromBytes((int)info.size) : Util.FileSize.Empty;
 
-            var card = new KoiCard(file, gameType, extData, parameter);
+            var card = new KoiCard(file, gameType, extData, extendedSize, parameter, loadVersion);
 
             return card;
         }
@@ -120,7 +127,7 @@ namespace KKManager.Data.Cards.KK
 
             if (personality >= 80 && personality <= 86) return "Story-only " + personality;
 
-            return "Unknown";
+            return KKManager.Properties.Resources.Unknown;
         }
     }
 }

@@ -37,14 +37,11 @@ namespace KKManager.Updater
             }
         }
 
-        public static async Task<List<UpdateTask>> GetUpdates(CancellationToken cancellationToken, UpdateSourceBase[] updateSources, string[] filterByGuids = null)
+        public static async Task<List<UpdateTask>> GetUpdates(CancellationToken cancellationToken, UpdateSourceBase[] updateSources, string[] filterByGuids, bool onlyDiscover, IProgress<float> progressCallback)
         {
             Console.WriteLine("Starting update search...");
-            return await Task.Run(async () => await GetUpdatesInt(cancellationToken, updateSources, filterByGuids), cancellationToken);
-        }
+            progressCallback.Report(0);
 
-        private static async Task<List<UpdateTask>> GetUpdatesInt(CancellationToken cancellationToken, UpdateSourceBase[] updateSources, string[] filterByGuids)
-        {
             var results = new ConcurrentBag<UpdateTask>();
 
             var ignoreListPath = "ignorelist.txt";
@@ -56,54 +53,68 @@ namespace KKManager.Updater
 
             Exception criticalException = null;
 
+            var progressArr = new float[updateSources.Length];
+
             // First start all of the sources, then wait until they all finish
-            var concurrentTasks = updateSources.Select(source => new
+            var concurrentTasks = updateSources.Select((source, index) =>
             {
-                task = RetryHelper.RetryOnExceptionAsync(
-                    async () =>
+                IProgress<float> taskProgress = new Progress<float>(f =>
+                {
+                    progressArr[index] = f;
+                    progressCallback.Report(progressArr.Sum(pr => pr / progressArr.Length));
+                });
+
+                async Task DoUpdate()
+                {
+                    try
                     {
-                        try
+                        foreach (var task in await source.GetUpdateItems(cancellationToken, onlyDiscover, taskProgress).ConfigureAwait(false))
                         {
-                            foreach (var task in await source.GetUpdateItems(cancellationToken))
-                            {
-                                anySuccessful = true;
+                            anySuccessful = true;
 
-                                if (cancellationToken.IsCancellationRequested || criticalException != null) break;
+                            if (cancellationToken.IsCancellationRequested || criticalException != null) break;
 
-                                // todo move further inside or decouple getting update tasks and actually processing them
-                                if (filterByGuids != null && filterByGuids.Length > 0 &&
-                                    !filterByGuids.Contains(task.Info.GUID))
-                                    continue;
+                            // todo move further inside or decouple getting update tasks and actually processing them
+                            if (filterByGuids != null && filterByGuids.Length > 0 && !filterByGuids.Contains(task.Info.GUID)) continue;
 
-                                task.Items.RemoveAll(x => x.UpToDate || 
-                                                          // Todo disable updating by default instead whenever that's done
-                                                          (x.RemoteFile != null && ignoreList.Any(x.RemoteFile.Name.Contains)) || (x.TargetPath != null && ignoreList.Any(x.TargetPath.GetNameWithoutExtension().Contains)));
-                                results.Add(task);
-                            }
+                            task.Items.RemoveAll(x => x.UpToDate ||
+                                                      // Todo disable updating by default instead whenever that's done
+                                                      (x.RemoteFile != null && ignoreList.Any(x.RemoteFile.Name.Contains)) ||
+                                                      (x.TargetPath != null && ignoreList.Any(x.TargetPath.GetNameWithoutExtension().Contains)));
+                            results.Add(task);
                         }
-                        catch (OutdatedVersionException ex)
-                        {
-                            criticalException = ex;
-                        }
-                    },
-                    3, TimeSpan.FromSeconds(3), cancellationToken),
-                source
+                    }
+                    catch (OutdatedVersionException ex)
+                    {
+                        criticalException = ex;
+                    }
+                    finally
+                    {
+                        taskProgress.Report(1);
+                    }
+                }
+                var updateTask = source.HandlesRetry ?
+                    Task.Run(DoUpdate, cancellationToken) :
+                    RetryHelper.RetryOnExceptionAsync(() => Task.Run(DoUpdate, cancellationToken), 3, TimeSpan.FromSeconds(3), cancellationToken);
+                return new { task = updateTask, source };
             }).ToList();
 
             foreach (var task in concurrentTasks)
             {
                 try
                 {
-                    await task.task;
+                    await task.task.ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
-                {
-                }
+                catch (OperationCanceledException) { }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"[ERROR] Unexpected error while collecting updates from source {task.source.Origin} - skipping the source. Error: {e.ToStringDemystified()}");
+                    if (e is AggregateException ae && ae.InnerExceptions.Any(x => x is OperationCanceledException))
+                        continue;
+                    else
+                        Console.WriteLine($"[ERROR] Unexpected error while collecting updates from source {task.source.Origin} - skipping the source. Error: {e.ToStringDemystified()}");
                 }
             }
+            progressCallback.Report(1);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -114,13 +125,21 @@ namespace KKManager.Updater
             var filteredTasks = new List<UpdateTask>();
             foreach (var modGroup in results.GroupBy(x => x.Info.GUID))
             {
-                var ordered = modGroup.OrderByDescending(x => x.ModifiedTime ?? DateTime.MinValue).ThenByDescending(x => x.Info.Source.DiscoveryPriority).ToList();
+                var ordered = modGroup.OrderByDescending(x => x.Info.Source is TorrentUpdater.TorrentSource).ThenByDescending(x => x.ModifiedTime ?? DateTime.MinValue).ThenByDescending(x => x.Info.Source.DiscoveryPriority).ToList();
+                var mainTask = ordered[0];
                 if (ordered.Count > 1)
                 {
-                    ordered[0].AlternativeSources.AddRange(ordered.Skip(1));
-                    Console.WriteLine($"Found {ordered.Count} sources for mod GUID {modGroup.Key} - choosing {ordered[0].Info.Source.Origin} as latest");
+                    if (mainTask.Info.Source is TorrentUpdater.TorrentSource)
+                    {
+                        Console.WriteLine($"Found torrent source [{mainTask.Info.Source.Origin}] for mod GUID {modGroup.Key} - using it to download the update");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Found {ordered.Count} direct download sources for mod GUID {modGroup.Key} - choosing {mainTask.Info.Source.Origin} as latest");
+                        mainTask.AlternativeSources.AddRange(ordered.Skip(1));
+                    }
                 }
-                filteredTasks.Add(ordered[0]);
+                filteredTasks.Add(mainTask);
             }
 
             Console.WriteLine($"Update search finished. Found {filteredTasks.Count} update tasks.");
@@ -132,7 +151,7 @@ namespace KKManager.Updater
             var updateSourcesPath = Path.Combine(searchDirectory, "UpdateSources");
             var updateSourcesPathDebug = Path.Combine(searchDirectory, "UpdateSourcesDebug");
 
-            var updateSources = new string[0];
+            var updateSources = Array.Empty<string>();
 
             Console.WriteLine("Looking for update sources...");
 

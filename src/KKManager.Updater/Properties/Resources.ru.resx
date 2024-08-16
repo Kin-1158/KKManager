@@ -1,0 +1,230 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SecurityExceptionRetry_Message" xml:space="preserve">
+    <value>Не удалось создать файл в каталоге {0} из-за проблемы - {1}
+
+Хотите, чтобы KKManager попытался устранить проблему? Нажмите отмена, если хотите прервать процесс.</value>
+  </data>
+  <data name="SecurityExceptionRetry_Title" xml:space="preserve">
+    <value>Не удалось применить обновление</value>
+  </data>
+  <data name="ModUpdateProgress_PleaseWait" xml:space="preserve">
+    <value>Подождите, это может занять несколько минут.</value>
+  </data>
+  <data name="ModUpdateProgress_PleaseWait_P2P" xml:space="preserve">
+    <value>При вкл. P2P это займёт более 10 минут.</value>
+  </data>
+  <data name="ModUpdateProgress_Preparing" xml:space="preserve">
+    <value>Подготовка...</value>
+  </data>
+  <data name="ModUpdateProgress_Searching" xml:space="preserve">
+    <value>Поиск обновлений модов...</value>
+  </data>
+  <data name="ModUpdateProgress_AllUpToDate" xml:space="preserve">
+    <value>Все моды обновлены!</value>
+  </data>
+  <data name="ModUpdateProgress_UpdatesFoundConfirmation" xml:space="preserve">
+    <value>Найдено {0} задачи обновления ({1} уже были установлены), ожидается подтверждение пользователя.</value>
+  </data>
+  <data name="ModUpdateProgress_Downloading" xml:space="preserve">
+    <value>Загрузка обновлений...</value>
+  </data>
+  <data name="ModUpdateProgress_Finished_Main" xml:space="preserve">
+    <value>Успешно обновлено/удалено {0} файлов из {1} задач.</value>
+    <comment>Message box shown when updating finishes</comment>
+  </data>
+  <data name="ModUpdateProgress_Finished_Fails" xml:space="preserve">
+    <value>Не удалось обновить {0} файлов из-за сбоя источников. Проверьте лог для подробной информации.</value>
+    <comment>Message box after finishing the update, this is only shown if any items failed to update</comment>
+  </data>
+  <data name="ModUpdateProgress_Finished_FailReasons" xml:space="preserve">
+    <value>Причина(ы) неудачи:</value>
+    <comment>Message box at end of update, shown only if any updates failed and reasons are available</comment>
+  </data>
+  <data name="ModUpdateProgress_Finished_Title" xml:space="preserve">
+    <value>Завершение обновления</value>
+    <comment>Title of the message box</comment>
+  </data>
+  <data name="ModUpdateProgress_Failed_Outdated" xml:space="preserve">
+    <value>Для получения обновлений необходимо обновить KKManager.</value>
+  </data>
+  <data name="ModUpdateProgress_Failed_CancelledByUser" xml:space="preserve">
+    <value>Обновление отменено пользователем.</value>
+  </data>
+  <data name="ModUpdateProgress_Failed_Unexpected" xml:space="preserve">
+    <value>Неожиданный сбой при обновлении модов, останавливаем процесс.</value>
+  </data>
+  <data name="ModUpdateProgress_Failed_Unexpected_Message" xml:space="preserve">
+    <value>Произошло непредвиденное, и обновление не удалось завершить. Убедитесь, что ваше интернет-соединение стабильно, и лимит загрузки не превышен, затем повторите попытку.
+
+Сообщение об ошибке (проверьте журнал):
+{0}</value>
+    <comment>Message box shown if update fails because of unexpected error</comment>
+  </data>
+  <data name="ModUpdateProgress_Failed_Unexpected_Title" xml:space="preserve">
+    <value>Сбой обновления</value>
+    <comment>Title of the message box</comment>
+  </data>
+  <data name="ModUpdateProgress_NothingWasDownloaded" xml:space="preserve">
+    <value>Ничего не было загружено</value>
+  </data>
+  <data name="ModUpdateProgress_DownloadFinishedStats" xml:space="preserve">
+    <value>Загружено {0} из {1} за {2}</value>
+    <comment>0 is size with unit (e.g. 10MB) 1 is total size with unit (e.g. 2.1GB) 2 is time in culture dependant format (e.g. 14 seconds)</comment>
+  </data>
+  <data name="ModUpdateProgress_DownloadFinished_Seeding" xml:space="preserve">
+    <value>Раздача на скорости {0}/с {1} пирам (Нажмите OK для остановки)</value>
+    <comment>0 is size with unit, 1 is a number</comment>
+  </data>
+  <data name="ModUpdateProgress_DownloadFinished_Average" xml:space="preserve">
+    <value>Средняя скорость загрузки: {0}/с)</value>
+  </data>
+  <data name="ModUpdateProgress_OKbutton" xml:space="preserve">
+    <value>Ок</value>
+    <comment>Text on the bottom right button shown after updating finishes or is otherwise stopped</comment>
+  </data>
+  <data name="ModUpdateProgress_Finishing" xml:space="preserve">
+    <value>Завершение процесса обновления, подождите...</value>
+  </data>
+  <data name="ModUpdateProgress_ThisCouldTakeAMinute" xml:space="preserve">
+    <value>Это займёт минуту.</value>
+  </data>
+  <data name="ModUpdateSelect_AllUpToDate" xml:space="preserve">
+    <value>Все моды обновлены!</value>
+  </data>
+  <data name="ModUpdateSelect_SelectTaskToView" xml:space="preserve">
+    <value>Выберите задачу, чтобы просмотреть ее детали.</value>
+  </data>
+  <data name="ModUpdateSelect_WillBeRemoved" xml:space="preserve">
+    <value>Будет удалено</value>
+    <comment>Shown in update select list in the size column if the file will be removed</comment>
+  </data>
+  <data name="ModUpdateSelect_FailedMessage_Title" xml:space="preserve">
+    <value>Не удалось получить обновления</value>
+  </data>
+  <data name="ModUpdateSelect_SizeStatus_Nothing" xml:space="preserve">
+    <value>Нечего загружать</value>
+    <comment>Shown at bottom of the window if no updates are selected or the updates only remove files</comment>
+  </data>
+  <data name="ModUpdateSelect_SizeStatus_BytesToDownload" xml:space="preserve">
+    <value>Осталось загрузить {0}</value>
+    <comment>Shown at bottom of the window, 0 is size of all updates to be downloaded (with unit included)</comment>
+  </data>
+</root>

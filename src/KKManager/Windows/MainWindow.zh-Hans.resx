@@ -213,4 +213,40 @@
   <data name="helpToolStripMenuItem.Text" xml:space="preserve">
     <value>帮助</value>
   </data>
+  <data name="lookForModUpdatesToolStripMenuItem.Text" xml:space="preserve">
+    <value>更新Mods</value>
+  </data>
+  <data name="openIndividualDownloadWebsiteToolStripMenuItem.Text" xml:space="preserve">
+    <value>打开单一Mods的下载网站</value>
+  </data>
+  <data name="useSystemProxyServerToolStripMenuItem.Text" xml:space="preserve">
+    <value>使用系统代理服务器进行FTP（需要重启程序）</value>
+  </data>
+  <data name="p2PDownloaderSettingsToolStripMenuItem.Text" xml:space="preserve">
+    <value>P2P传输设置...</value>
+  </data>
+  <data name="cleanUpDuplicateZipmodsToolStripMenuItem.Text" xml:space="preserve">
+    <value>清理重复的zipmods</value>
+  </data>
+  <data name="openModpackToolToolStripMenuItem.Text" xml:space="preserve">
+    <value>打开Modpack工具</value>
+  </data>
+  <data name="generateContentsOfUpdatexmlToolStripMenuItem.Text" xml:space="preserve">
+    <value>生成Update.xml的内容...</value>
+  </data>
+  <data name="settingsToolStripMenuItem.Text" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="licenseToolStripMenuItem.Text" xml:space="preserve">
+    <value>许可</value>
+  </data>
+  <data name="websiteToolStripMenuItem.Text" xml:space="preserve">
+    <value>网站/源代码</value>
+  </data>
+  <data name="compressBundlesAndRandomizeCABsToolStripMenuItem.Text" xml:space="preserve">
+    <value>压缩在一个文件夹中...</value>
+  </data>
+  <data name="cleanUpDuplicateAndInvalidZipmodsToolStripMenuItem.Text" xml:space="preserve">
+    <value>清理重复的和无效的zipmods...</value>
+  </data>
 </root>

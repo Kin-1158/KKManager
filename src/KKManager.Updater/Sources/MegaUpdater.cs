@@ -33,7 +33,7 @@ namespace KKManager.Updater.Sources
                 throw new NotSupportedException("The link doesn't point to mega.nz - " + serverUri);
 
             _client = new MegaApiClient();
-            _client.ApiRequestFailed += (sender, args) => Console.WriteLine($@"MEGA API ERROR: {args.ApiResult}   {args.Exception}");
+            _client.ApiRequestFailed += (sender, args) => Console.WriteLine($@"MEGA API ERROR: {args.ApiResult} - {args.Exception.ToStringDemystified()}");
 
             _currentFolderLink = serverUri;
 
@@ -74,11 +74,11 @@ namespace KKManager.Updater.Sources
             }
         }
 
-        public override async Task<List<UpdateTask>> GetUpdateItems(CancellationToken cancellationToken)
+        public override async Task<List<UpdateTask>> GetUpdateItems(CancellationToken cancellationToken, bool onlyDiscover, IProgress<float> progressCallback)
         {
             await Connect(false);
             await RetryHelper.RetryOnExceptionAsync(async () => _allNodes = (await _client.GetNodesFromLinkAsync(_currentFolderLink)).ToList(), 2, TimeSpan.FromSeconds(1), cancellationToken);
-            return await base.GetUpdateItems(cancellationToken);
+            return await base.GetUpdateItems(cancellationToken, onlyDiscover, progressCallback);
         }
 
         protected override async Task<Stream> DownloadFileAsync(string updateFileName, CancellationToken cancellationToken)
@@ -89,10 +89,10 @@ namespace KKManager.Updater.Sources
             return await _client.DownloadAsync(nodeAtPath, new Progress<double>(), cancellationToken);
         }
 
-        protected override IRemoteItem GetRemoteRootItem(string serverPath)
+        protected override Task<IRemoteItem> GetRemoteRootItem(string serverPath, CancellationToken cancellationToken)
         {
             var updateNode = GetNodeAtPath(serverPath);
-            return updateNode != null ? new MegaUpdateItem(updateNode, this, null) : null;
+            return Task.FromResult(updateNode != null ? (IRemoteItem)new MegaUpdateItem(updateNode, this, null) : null);
         }
 
         private INode GetNodeAtPath(string serverPath)
@@ -147,7 +147,7 @@ namespace KKManager.Updater.Sources
                 }
             }
 
-            retryLoginWithAuth:
+        retryLoginWithAuth:
             if (_authInfos != null)
             {
                 _loginToken = await _client.LoginAsync(_authInfos);
@@ -214,7 +214,7 @@ namespace KKManager.Updater.Sources
                 SourceItem = item ?? throw new ArgumentNullException(nameof(item));
                 _source = source ?? throw new ArgumentNullException(nameof(source));
                 ItemSize = item.Size;
-                ModifiedTime = item.ModificationDate ?? item.CreationDate;
+                ModifiedTime = item.ModificationDate ?? item.CreationDate ?? DateTime.MinValue;
                 Name = item.Name;
                 IsDirectory = item.Type == NodeType.Directory;
                 IsFile = item.Type == NodeType.File;

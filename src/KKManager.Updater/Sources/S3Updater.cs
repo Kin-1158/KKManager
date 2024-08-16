@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Amazon.S3;
@@ -19,8 +18,7 @@ namespace KKManager.Updater.Sources
 
         private readonly AmazonS3Client _s3Client;
 
-        public S3Updater(Uri serverUri, int discoveryPriority, int downloadPriority) : base(serverUri.Host,
-            discoveryPriority, downloadPriority)
+        public S3Updater(Uri serverUri, int discoveryPriority, int downloadPriority) : base(serverUri.Host, discoveryPriority, downloadPriority, 2)
         {
             var info = serverUri.UserInfo.Split(new[] { ':' }, 2, StringSplitOptions.None);
             if (info.Length != 2)
@@ -53,9 +51,10 @@ namespace KKManager.Updater.Sources
             return objectResponse.ResponseStream;
         }
 
-        protected override IRemoteItem GetRemoteRootItem(string serverPath)
+        protected override async Task<IRemoteItem> GetRemoteRootItem(string serverPath, CancellationToken cancellationToken)
         {
-            Task.Run(() => GetFileListing().Wait()).Wait(); //todo async? move somewhere else? Need to run through task.run to avoid deadlock
+            // Need to run through Task.Run to avoid deadlock (todo still necessary?)
+            await Task.Run(() => GetFileListing().Wait(cancellationToken), cancellationToken);
 
             var pathParts = serverPath.Trim().Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
             var cleanPath = string.Join("/", pathParts);
@@ -108,7 +107,7 @@ namespace KKManager.Updater.Sources
                 {
                     var task = output.WriteAsync(buffer, 0, bytesRead, cancellationToken);
 
-                    progressCallback.Report(100d * Math.Min(1d, (double)output.Position / (double)sourceItem.Size));
+                    progressCallback.Report(100d * Math.Min(1d, output.Position / (double)sourceItem.Size));
 
                     await task;
                 }
@@ -138,7 +137,7 @@ namespace KKManager.Updater.Sources
                         goto skip;
 
                 // Check if the item is directly inside this directory
-                if (remotePath.Length == searchPath.Length + 1 && !IsDirectory(node))
+                if (remotePath.Length == searchPath.Length + 1 && !NodeIsDirectory(node))
                     yield return new WasabiRemoteItem(node, this, rootFolder);
                 // If not then take note of the subfolder
                 else
@@ -152,7 +151,7 @@ namespace KKManager.Updater.Sources
                 yield return new WasabiRemoteItem(folder, this, rootFolder);
         }
 
-        private static bool IsDirectory(S3Object node)
+        private static bool NodeIsDirectory(S3Object node)
         {
             return node.Key.EndsWith("/") && node.Size == 0;
         }
@@ -174,7 +173,7 @@ namespace KKManager.Updater.Sources
                     ClientRelativeFileName = _fullPath.Substring(_rootFolder.Length).Trim('/');
                 }
 
-                IsDirectory = IsDirectory(sourceItem);
+                IsDirectory = NodeIsDirectory(sourceItem);
                 if (IsDirectory) throw new ArgumentException("Directory object received in wrong overload");
                 IsFile = true;
 

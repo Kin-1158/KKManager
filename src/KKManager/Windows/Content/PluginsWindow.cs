@@ -9,6 +9,7 @@ using System.Reactive.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using BrightIdeasSoftware;
+using KKManager.Data;
 using KKManager.Data.Plugins;
 using KKManager.Functions;
 using KKManager.Util;
@@ -34,6 +35,8 @@ namespace KKManager.Windows.Content
 
             objectListView1.PrimarySortColumn = olvColumnName;
 
+            olvColumnGames.AspectGetter = x => string.Join(", ", ((ModInfoBase)x)?.Games.Distinct().OrderBy(z => z) ?? Enumerable.Empty<string>());
+
             ListTools.SetUpSearchBox(objectListView1, toolStripTextBoxSearch);
         }
 
@@ -42,7 +45,7 @@ namespace KKManager.Windows.Content
             if (!string.IsNullOrEmpty(contentString))
             {
                 try { objectListView1.RestoreState(Convert.FromBase64String(contentString)); }
-                catch { }
+                catch { /* Safe to ignore */ }
             }
         }
 
@@ -71,6 +74,8 @@ namespace KKManager.Windows.Content
 
         public void RefreshList()
         {
+            UseWaitCursor = true;
+
             objectListView1.ClearObjects();
 
             _cancellationTokenSource = new CancellationTokenSource();
@@ -78,18 +83,20 @@ namespace KKManager.Windows.Content
 
             PluginLoader.Plugins
                 .Buffer(TimeSpan.FromSeconds(3), ThreadPoolScheduler.Instance)
-                .ObserveOn(this)
-                .Subscribe(list => objectListView1.AddObjects((ICollection)list),
-                    () =>
-                    {
-                        objectListView1.FastAutoResizeColumns();
-                        MainWindow.SetStatusText("Done loading plugins");
-                    }, token);
+                .ObserveOn(Program.MainSynchronizationContext)
+                .Subscribe(list => objectListView1.AddObjects(list),
+                           () =>
+                           {
+                               objectListView1.FastAutoResizeColumns();
+                               UseWaitCursor = false;
+                               MainWindow.SetStatusText("Done loading plugins");
+                           }, token);
         }
 
         public void CancelRefreshing()
         {
             _cancellationTokenSource?.Cancel();
+            UseWaitCursor = false;
         }
 
         private void SideloaderModsWindow_FormClosed(object sender, FormClosedEventArgs e)
@@ -97,7 +104,7 @@ namespace KKManager.Windows.Content
             CancelRefreshing();
         }
 
-        private void toolStripButtonDelete_Click(object sender, EventArgs e)
+        private async void toolStripButtonDelete_Click(object sender, EventArgs e)
         {
             if (MessageBox.Show("This will permanently delete all selected plugins, are you sure you want to continue?",
                 "Delete plugins", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
@@ -116,7 +123,7 @@ namespace KKManager.Windows.Content
             {
                 try
                 {
-                    plug.Location.Delete();
+                    await plug.Location.SafeDelete();
                     objectListView1.RemoveObject(plug);
                 }
                 catch (SystemException ex)
@@ -175,7 +182,7 @@ namespace KKManager.Windows.Content
 
         private void RefreshView()
         {
-            objectListView1.RefreshObjects((IList)_listView.Objects);
+            objectListView1.RefreshObjects(_listView.Objects);
         }
 
         private void toolStripButtonDisable_Click(object sender, EventArgs e)

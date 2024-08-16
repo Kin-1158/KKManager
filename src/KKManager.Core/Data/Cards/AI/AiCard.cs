@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using KKManager.Util;
 using MessagePack;
 
 namespace KKManager.Data.Cards.AI
@@ -17,11 +19,6 @@ namespace KKManager.Data.Cards.AI
         [ReadOnly(true)] public ChaFileParameter2 Parameter2 { get; private set; }
         [ReadOnly(true)] public ChaFileGameInfo Gameinfo { get; private set; }
         [ReadOnly(true)] public ChaFileGameInfo2 Gameinfo2 { get; private set; }
-
-        [ReadOnly(true)] public int Language { get; private set; }
-        [ReadOnly(true)] public string UserID { get; private set; }
-        [ReadOnly(true)] public string DataID { get; private set; }
-        [ReadOnly(true)] public Version Version { get; private set; }
 
         public override Image GetCardFaceImage()
         {
@@ -53,13 +50,13 @@ namespace KKManager.Data.Cards.AI
                 var parameterBytes = reader.ReadBytes((int)info.size);
                 extData = MessagePackSerializer.Deserialize<Dictionary<string, PluginData>>(parameterBytes);
             }
+            var extendedSize = info != null ? Util.FileSize.FromBytes((int)info.size) : Util.FileSize.Empty;
 
-            var card = new AiCard(file, gameType, extData)
+            var card = new AiCard(file, gameType, extData, extendedSize, loadVersion)
             {
                 Language = language,
                 UserID = userID,
-                DataID = dataID,
-                Version = loadVersion
+                DataID = dataID
             };
 
             void SetData<T>(string blockName, Action<T> set)
@@ -68,9 +65,14 @@ namespace KKManager.Data.Cards.AI
                 if (info != null)
                 {
                     reader.BaseStream.Seek(position + info.pos, SeekOrigin.Begin);
+
                     var parameterBytes = reader.ReadBytes((int)info.size);
                     var parameter = MessagePackSerializer.Deserialize<T>(parameterBytes);
-                    typeof(T).GetProperty("version", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public).SetValue(parameter, new Version(info.version), null);
+
+                    var versionProp = typeof(T).GetProperty("version", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+                    Debug.Assert(versionProp != null, nameof(versionProp) + " != null");
+                    if (versionProp != null) versionProp.SetValue(parameter, new Version(info.version), null);
+
                     set(parameter);
                 }
             }
@@ -102,10 +104,10 @@ namespace KKManager.Data.Cards.AI
             if (personalityLookup.Length > personality)
                 return personalityLookup[personality];
 
-            return "Unknown";
+            return KKManager.Properties.Resources.Unknown;
         }
 
-        public AiCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended) : base(cardFile, type, extended)
+        public AiCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, FileSize extendedSize, Version loadVersion) : base(cardFile, type, extended, extendedSize, loadVersion)
         {
         }
     }

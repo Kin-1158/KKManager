@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Windows.Forms;
+using KKManager.Controls;
 using KKManager.Properties;
 using KKManager.Util;
 using KKManager.Windows;
@@ -29,6 +30,7 @@ namespace KKManager
             };
 
             Logger = LogWriter.StartLogging();
+            LogControl.Log = Logger;
             using (Logger)
             {
                 var currentCulture = LanguageManager.CurrentCulture;

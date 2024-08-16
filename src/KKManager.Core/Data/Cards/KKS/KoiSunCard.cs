@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using KKManager.Util;
 using MessagePack;
 
 namespace KKManager.Data.Cards.KKS
@@ -11,11 +13,18 @@ namespace KKManager.Data.Cards.KKS
         public override CharaSex Sex => Parameter == null ? CharaSex.Unknown : Parameter.sex == 0 ? CharaSex.Male : CharaSex.Female;
         public override string PersonalityName => GetPersonalityName(Parameter?.personality ?? -1);
 
-        public ChaFileParameter Parameter { get; }
+        [ReadOnly(true)] public ChaFileParameter Parameter { get; }
+        [ReadOnly(true), Browsable(false)] public ChaFileAbout About { get; }
 
-        private KoiSunCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, ChaFileParameter parameter) : base(cardFile, type, extended)
+        public override int Language => About.language;
+        public override string UserID => About.userID;
+        public override string DataID => About.dataID;
+
+        private KoiSunCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, FileSize extendedSize, ChaFileParameter parameter, ChaFileAbout about, Version version) :
+            base(cardFile, type, extended, extendedSize, about?.version ?? version)
         {
             Parameter = parameter;
+            About = about ?? new ChaFileAbout();
         }
 
         public static KoiSunCard ParseKoiChara(FileInfo file, BinaryReader reader, CardType gameType)
@@ -54,6 +63,21 @@ namespace KKManager.Data.Cards.KKS
                 }
             }
 
+            ChaFileAbout about = null;
+            info = blockHeader.SearchInfo(ChaFileAbout.BlockName);
+            if (info != null)
+            {
+                var value = new Version(info.version);
+                if (0 <= ChaFileAbout.CurrentVersion.CompareTo(value))
+                {
+                    reader.BaseStream.Seek(position + info.pos, SeekOrigin.Begin);
+                    var parameterBytes = reader.ReadBytes((int)info.size);
+
+                    about = MessagePackSerializer.Deserialize<ChaFileAbout>(parameterBytes);
+                    about.ComplementWithVersion();
+                }
+            }
+
             Dictionary<string, PluginData> extData = null;
             info = blockHeader.SearchInfo(ChaFileExtended.BlockName);
             if (info != null)
@@ -63,8 +87,9 @@ namespace KKManager.Data.Cards.KKS
 
                 extData = MessagePackSerializer.Deserialize<Dictionary<string, PluginData>>(parameterBytes);
             }
+            var extendedSize = info != null ? Util.FileSize.FromBytes((int)info.size) : Util.FileSize.Empty;
 
-            var card = new KoiSunCard(file, gameType, extData, parameter);
+            var card = new KoiSunCard(file, gameType, extData, extendedSize, parameter, about, loadVersion);
 
             return card;
         }
@@ -121,7 +146,7 @@ namespace KKManager.Data.Cards.KKS
 
             if (personality >= 80 && personality <= 86) return "Story-only " + personality;
 
-            return "Unknown";
+            return KKManager.Properties.Resources.Unknown;
         }
     }
 }

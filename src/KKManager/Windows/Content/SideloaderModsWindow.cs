@@ -9,6 +9,7 @@ using System.Reactive.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using BrightIdeasSoftware;
+using KKManager.Data;
 using KKManager.Data.Zipmods;
 using KKManager.Functions;
 using KKManager.Util;
@@ -32,6 +33,11 @@ namespace KKManager.Windows.Content
             objectListView1.FormatRow += ObjectListView1_FormatRow;
 
             objectListView1.PrimarySortColumn = olvColumnName;
+            objectListView1.SecondarySortColumn = olvColumnPath;
+            objectListView1.PrimarySortOrder = SortOrder.Ascending;
+            objectListView1.SecondarySortOrder = SortOrder.Ascending;
+
+            olvColumnGames.AspectGetter = x => string.Join(", ", ((ModInfoBase)x)?.Games.Distinct().OrderBy(z => z) ?? Enumerable.Empty<string>());
 
             ListTools.SetUpSearchBox(objectListView1, toolStripTextBoxSearch);
         }
@@ -41,7 +47,7 @@ namespace KKManager.Windows.Content
             if (!string.IsNullOrEmpty(contentString))
             {
                 try { objectListView1.RestoreState(Convert.FromBase64String(contentString)); }
-                catch { }
+                catch { /* safe to ignore */ }
             }
         }
 
@@ -70,6 +76,8 @@ namespace KKManager.Windows.Content
 
         public void RefreshList()
         {
+            UseWaitCursor = true;
+
             objectListView1.ClearObjects();
 
             _cancellationTokenSource = new CancellationTokenSource();
@@ -77,11 +85,12 @@ namespace KKManager.Windows.Content
 
             SideloaderModLoader.Zipmods
                 .Buffer(TimeSpan.FromSeconds(3), ThreadPoolScheduler.Instance)
-                .ObserveOn(this)
-                .Subscribe(list => objectListView1.AddObjects((ICollection)list),
+                .ObserveOn(Program.MainSynchronizationContext)
+                .Subscribe(list => objectListView1.AddObjects(list),
                     () =>
                     {
                         objectListView1.FastAutoResizeColumns();
+                        UseWaitCursor = false;
                         MainWindow.SetStatusText("Done loading zipmods");
                     }, token);
         }
@@ -126,7 +135,7 @@ namespace KKManager.Windows.Content
             SetZipmodEnabled(false, _listView.SelectedObjects);
         }
 
-        private void toolStripButtonDelete_Click(object sender, EventArgs e)
+        private async void toolStripButtonDelete_Click(object sender, EventArgs e)
         {
             if (MessageBox.Show("This will permanently delete all selected zipmods, are you sure you want to continue?",
                     "Delete zipmods", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK)
@@ -136,7 +145,7 @@ namespace KKManager.Windows.Content
             {
                 try
                 {
-                    obj.Location.Delete();
+                    await obj.Location.SafeDelete();
                     objectListView1.RemoveObject(obj);
                 }
                 catch (SystemException ex)
@@ -162,6 +171,7 @@ namespace KKManager.Windows.Content
         public void CancelRefreshing()
         {
             _cancellationTokenSource?.Cancel();
+            UseWaitCursor = false;
         }
 
         private void toolStripButtonSameGuid_Click(object sender, EventArgs e)

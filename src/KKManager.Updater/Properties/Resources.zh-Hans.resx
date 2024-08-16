@@ -1,0 +1,230 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="SecurityExceptionRetry_Message" xml:space="preserve">
+    <value>由于安全问题，在目录 {0} 中创建文件失败 - {1}
+
+是否想让KK Manager尝试修复这个问题？如果不想，请点击取消。</value>
+  </data>
+  <data name="SecurityExceptionRetry_Title" xml:space="preserve">
+    <value>无法安装更新</value>
+  </data>
+  <data name="ModUpdateProgress_PleaseWait" xml:space="preserve">
+    <value>请稍等，这可能需要几分钟时间。</value>
+  </data>
+  <data name="ModUpdateProgress_PleaseWait_P2P" xml:space="preserve">
+    <value>启用P2P时，可能需要等待超过10分钟。</value>
+  </data>
+  <data name="ModUpdateProgress_Preparing" xml:space="preserve">
+    <value>准备中...</value>
+  </data>
+  <data name="ModUpdateProgress_Searching" xml:space="preserve">
+    <value>搜索Mod更新中...</value>
+  </data>
+  <data name="ModUpdateProgress_AllUpToDate" xml:space="preserve">
+    <value>全部已更新！</value>
+  </data>
+  <data name="ModUpdateProgress_UpdatesFoundConfirmation" xml:space="preserve">
+    <value>发现 {0} 项更新任务（ {1} 项已经是最新的），等待用户确认。</value>
+  </data>
+  <data name="ModUpdateProgress_Downloading" xml:space="preserve">
+    <value>下载更新中...</value>
+  </data>
+  <data name="ModUpdateProgress_Finished_Main" xml:space="preserve">
+    <value>成功更新或删除了 {1} 任务中的 {0} 文件。</value>
+    <comment>Message box shown when updating finishes</comment>
+  </data>
+  <data name="ModUpdateProgress_Finished_Fails" xml:space="preserve">
+    <value>更新 {0} 文件失败，因为一些源崩溃了。请检查日志来了解详情。</value>
+    <comment>Message box after finishing the update, this is only shown if any items failed to update</comment>
+  </data>
+  <data name="ModUpdateProgress_Finished_FailReasons" xml:space="preserve">
+    <value>错误原因：</value>
+    <comment>Message box at end of update, shown only if any updates failed and reasons are available</comment>
+  </data>
+  <data name="ModUpdateProgress_Finished_Title" xml:space="preserve">
+    <value>更新完成</value>
+    <comment>Title of the message box</comment>
+  </data>
+  <data name="ModUpdateProgress_Failed_Outdated" xml:space="preserve">
+    <value>此版本已过时，请更新。</value>
+  </data>
+  <data name="ModUpdateProgress_Failed_CancelledByUser" xml:space="preserve">
+    <value>更新已被用户取消。</value>
+  </data>
+  <data name="ModUpdateProgress_Failed_Unexpected" xml:space="preserve">
+    <value>在更新Mods时出现了意外的崩溃，操作已被中止。</value>
+  </data>
+  <data name="ModUpdateProgress_Failed_Unexpected_Message" xml:space="preserve">
+    <value>出现了一些意外状况，导致更新无法完成。请确保您的网络连接稳定，且未超出下载限制，然后重试。
+
+错误信息（请查看日志以了解详细信息）
+{0}</value>
+    <comment>Message box shown if update fails because of unexpected error</comment>
+  </data>
+  <data name="ModUpdateProgress_Failed_Unexpected_Title" xml:space="preserve">
+    <value>更新失败</value>
+    <comment>Title of the message box</comment>
+  </data>
+  <data name="ModUpdateProgress_NothingWasDownloaded" xml:space="preserve">
+    <value>未下载任何内容</value>
+  </data>
+  <data name="ModUpdateProgress_DownloadFinishedStats" xml:space="preserve">
+    <value>在 {2} 的 {1} 中下载了 {0} </value>
+    <comment>0 is size with unit (e.g. 10MB) 1 is total size with unit (e.g. 2.1GB) 2 is time in culture dependant format (e.g. 14 seconds)</comment>
+  </data>
+  <data name="ModUpdateProgress_DownloadFinished_Seeding" xml:space="preserve">
+    <value>正在为 {1} 个节点做种，速度为 {0}/秒（点击“确定”停止）</value>
+    <comment>0 is size with unit, 1 is a number</comment>
+  </data>
+  <data name="ModUpdateProgress_DownloadFinished_Average" xml:space="preserve">
+    <value>平均下载速度： {0}/s)</value>
+  </data>
+  <data name="ModUpdateProgress_OKbutton" xml:space="preserve">
+    <value>确定</value>
+    <comment>Text on the bottom right button shown after updating finishes or is otherwise stopped</comment>
+  </data>
+  <data name="ModUpdateProgress_Finishing" xml:space="preserve">
+    <value>更新过程即将完成，请耐心等待...</value>
+  </data>
+  <data name="ModUpdateProgress_ThisCouldTakeAMinute" xml:space="preserve">
+    <value>这可能需要一点时间。</value>
+  </data>
+  <data name="ModUpdateSelect_AllUpToDate" xml:space="preserve">
+    <value>所有Mods都是最新的！</value>
+  </data>
+  <data name="ModUpdateSelect_SelectTaskToView" xml:space="preserve">
+    <value>选择一个项目来查看其详细信息。</value>
+  </data>
+  <data name="ModUpdateSelect_WillBeRemoved" xml:space="preserve">
+    <value>将被删除</value>
+    <comment>Shown in update select list in the size column if the file will be removed</comment>
+  </data>
+  <data name="ModUpdateSelect_FailedMessage_Title" xml:space="preserve">
+    <value>更新信息获取失败</value>
+  </data>
+  <data name="ModUpdateSelect_SizeStatus_Nothing" xml:space="preserve">
+    <value>无可下载内容</value>
+    <comment>Shown at bottom of the window if no updates are selected or the updates only remove files</comment>
+  </data>
+  <data name="ModUpdateSelect_SizeStatus_BytesToDownload" xml:space="preserve">
+    <value>有 {0} 可供下载</value>
+    <comment>Shown at bottom of the window, 0 is size of all updates to be downloaded (with unit included)</comment>
+  </data>
+</root>

@@ -9,6 +9,10 @@
         EmotionCreators,
         AiSyoujyo,
         KoikatsuSunshine,
-        RoomGirl
+        RoomGirl,
+        HoneyCome,
+        HoneyComeccp,
+        KoikatuClothes,
+        AiSyoujyoClothes,
     }
 }

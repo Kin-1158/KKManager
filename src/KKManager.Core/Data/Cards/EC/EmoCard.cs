@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
+using KKManager.Util;
 using MessagePack;
 
 namespace KKManager.Data.Cards.EC
@@ -14,13 +15,9 @@ namespace KKManager.Data.Cards.EC
         public override CharaSex Sex => Parameter == null ? CharaSex.Unknown : Parameter.sex == 0 ? CharaSex.Male : CharaSex.Female;
         public override string PersonalityName => GetPersonalityName(Parameter?.personality ?? -1);
 
-        public int Language { get; private set; }
-        public string UserID { get; private set; }
-        public string DataID { get; private set; }
-
         public ChaFileParameter Parameter { get; }
 
-        private EmoCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, ChaFileParameter parameter) : base(cardFile, type, extended)
+        private EmoCard(FileInfo cardFile, CardType type, Dictionary<string, PluginData> extended, FileSize extendedSize, ChaFileParameter parameter, Version loadVersion) : base(cardFile, type, extended, extendedSize, loadVersion)
         {
             Parameter = parameter;
         }
@@ -75,11 +72,14 @@ namespace KKManager.Data.Cards.EC
 
                 extData = MessagePackSerializer.Deserialize<Dictionary<string, PluginData>>(parameterBytes);
             }
+            var extendedSize = info != null ? Util.FileSize.FromBytes((int)info.size) : Util.FileSize.Empty;
 
-            var card = new EmoCard(file, gameType, extData, parameter);
-            card.Language = language;
-            card.DataID = dataID;
-            card.UserID = userID;
+            var card = new EmoCard(file, gameType, extData, extendedSize, parameter, loadVersion)
+            {
+                Language = language,
+                DataID = dataID,
+                UserID = userID
+            };
             return card;
         }
 
@@ -107,7 +107,7 @@ namespace KKManager.Data.Cards.EC
 
             if (personalityLookup.Length > personality) return personalityLookup[personality];
 
-            return "Unknown";
+            return KKManager.Properties.Resources.Unknown;
         }
     }
 }
